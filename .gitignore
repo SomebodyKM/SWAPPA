@@ -1,0 +1,22 @@
+.claude/
+.specify/
+CLAUDE.md
+specs/
+
+# Node / TypeScript
+node_modules/
+dist/
+build/
+*.log
+.env
+.env.*
+!.env.example
+coverage/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.tmp
