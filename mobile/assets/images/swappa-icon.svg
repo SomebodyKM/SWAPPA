@@ -1,0 +1,32 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7B5CFF"/>
+      <stop offset="1" stop-color="#5A2EE5"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.62">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="ds" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#2A0E7A" flood-opacity="0.30"/>
+    </filter>
+  </defs>
+
+  <!-- App tile -->
+  <rect x="0" y="0" width="1024" height="1024" rx="232" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="232" fill="url(#glow)"/>
+
+  <!-- faint depth ring -->
+  <circle cx="512" cy="512" r="210" fill="none" stroke="#FFFFFF" stroke-opacity="0.07" stroke-width="76"/>
+
+  <!-- swap loop -->
+  <g filter="url(#ds)" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="74">
+    <!-- top arc (yellow) -->
+    <path d="M 315 440 A 210 210 0 0 1 709 440" stroke="#FFD23F"/>
+    <path d="M 660.6 443.8 L 728 492 L 748.4 411.8" stroke="#FFD23F"/>
+    <!-- bottom arc (green) -->
+    <path d="M 709 584 A 210 210 0 0 1 315 584" stroke="#34E08B"/>
+    <path d="M 363.4 580.2 L 296 532 L 275.6 612.2" stroke="#34E08B"/>
+  </g>
+</svg>
