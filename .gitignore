@@ -2,6 +2,8 @@
 .specify/
 CLAUDE.md
 specs/
+design-reference/
+DESIGN_INTENT.md
 
 # Node / TypeScript
 node_modules/
