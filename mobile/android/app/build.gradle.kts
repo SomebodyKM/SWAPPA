@@ -33,6 +33,11 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // R8 fails on an unresolvable OkHttp reference inside image_cropper's
+            // uCrop dependency (an optional remote-download path we never use).
+            // Not worth chasing keep rules for a sideload test build.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
