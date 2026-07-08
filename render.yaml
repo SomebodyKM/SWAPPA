@@ -4,7 +4,9 @@ services:
     runtime: node
     rootDir: api
     plan: free
-    buildCommand: npm install && npm run build
+    # --include=dev overrides npm's default of skipping devDependencies when
+    # NODE_ENV=production is set — tsc (a devDependency) is needed to build.
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/v1/health
     envVars:
