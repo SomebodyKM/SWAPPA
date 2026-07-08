@@ -14,8 +14,9 @@ class ApiClient {
         baseUrl: Env.apiBaseUrl,
         connectTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(seconds: 30),
-        // Don't throw on 4xx — callers inspect ApiException instead.
-        validateStatus: (s) => s != null && s < 500,
+        // 4xx/5xx throw a DioException so the 401→refresh interceptor runs and
+        // services can convert failures into ApiException.
+        validateStatus: (s) => s != null && s < 400,
       ),
     );
     _refreshDio = Dio(BaseOptions(baseUrl: Env.apiBaseUrl));
@@ -30,33 +31,36 @@ class ApiClient {
   void Function()? onUnauthorized;
 
   InterceptorsWrapper _authInterceptor() => InterceptorsWrapper(
-        onRequest: (options, handler) async {
-          if (options.extra['skipAuth'] != true) {
-            final token = await _tokens.accessToken;
-            if (token != null) options.headers['Authorization'] = 'Bearer $token';
-          }
-          handler.next(options);
-        },
-        onError: (error, handler) async {
-          final response = error.response;
-          final isAuthRetry = error.requestOptions.extra['retried'] == true;
-          if (response?.statusCode == 401 && !isAuthRetry) {
-            final ok = await _tryRefresh();
-            if (ok) {
-              final retried = await _retry(error.requestOptions);
-              return handler.resolve(retried);
-            }
-            onUnauthorized?.call();
-          }
-          handler.next(error);
-        },
-      );
+    onRequest: (options, handler) async {
+      if (options.extra['skipAuth'] != true) {
+        final token = await _tokens.accessToken;
+        if (token != null) options.headers['Authorization'] = 'Bearer $token';
+      }
+      handler.next(options);
+    },
+    onError: (error, handler) async {
+      final response = error.response;
+      final isAuthRetry = error.requestOptions.extra['retried'] == true;
+      if (response?.statusCode == 401 && !isAuthRetry) {
+        final ok = await _tryRefresh();
+        if (ok) {
+          final retried = await _retry(error.requestOptions);
+          return handler.resolve(retried);
+        }
+        onUnauthorized?.call();
+      }
+      handler.next(error);
+    },
+  );
 
   Future<bool> _tryRefresh() async {
     final refresh = await _tokens.refreshToken;
     if (refresh == null) return false;
     try {
-      final res = await _refreshDio.post('/auth/refresh', data: {'refreshToken': refresh});
+      final res = await _refreshDio.post(
+        '/auth/refresh',
+        data: {'refreshToken': refresh},
+      );
       if (res.statusCode == 200 && res.data is Map) {
         await _tokens.save(
           access: res.data['accessToken'] as String,
@@ -64,7 +68,9 @@ class ApiClient {
         );
         return true;
       }
-    } catch (_) {/* fall through */}
+    } catch (_) {
+      /* fall through */
+    }
     await _tokens.clear();
     return false;
   }
@@ -76,6 +82,30 @@ class ApiClient {
         ..headers['Authorization'] = 'Bearer $token'
         ..extra['retried'] = true,
     );
+  }
+
+  // ── JSON helpers: return decoded data or throw ApiException ────────────────
+  Future<dynamic> getJson(String path, {Map<String, dynamic>? query}) =>
+      _guard(() => dio.get(path, queryParameters: query));
+  Future<dynamic> postJson(String path, {Object? body}) =>
+      _guard(() => dio.post(path, data: body));
+  Future<dynamic> patchJson(String path, {Object? body}) =>
+      _guard(() => dio.patch(path, data: body));
+  Future<dynamic> deleteJson(String path, {Object? body}) =>
+      _guard(() => dio.delete(path, data: body));
+
+  Future<dynamic> _guard(Future<Response> Function() req) async {
+    try {
+      final res = await req();
+      return res.data;
+    } on DioException catch (e) {
+      if (e.response != null) throw ApiException.fromResponse(e.response!);
+      throw ApiException(
+        0,
+        'NETWORK',
+        'Network error — check your connection.',
+      );
+    }
   }
 }
 
@@ -105,6 +135,27 @@ class ApiException implements Exception {
   bool get isPaymentRequired => statusCode == 402;
   bool get isLimitReached => code == 'LIMIT_REACHED';
   bool get isPremiumRequired => code == 'PREMIUM_REQUIRED';
+
+  /// A single field this error is tagged to (e.g. `password`, `emailOrPhone`).
+  String? get field =>
+      (details is Map) ? (details as Map)['field'] as String? : null;
+
+  /// Per-field validation messages (from the backend `VALIDATION` error).
+  Map<String, String> get fieldErrors {
+    if (details is Map && (details as Map)['fieldErrors'] is Map) {
+      return ((details as Map)['fieldErrors'] as Map).map(
+        (k, v) => MapEntry(k.toString(), v.toString()),
+      );
+    }
+    return const {};
+  }
+
+  /// The message that belongs to [fieldName], from either [field] or [fieldErrors].
+  String? messageForField(String fieldName) {
+    if (fieldErrors.containsKey(fieldName)) return fieldErrors[fieldName];
+    if (field == fieldName) return message;
+    return null;
+  }
 
   @override
   String toString() => message;

@@ -4,12 +4,20 @@ import '../../../design_system/app_theme.dart';
 import '../../../design_system/tokens.dart';
 import '../../../design_system/widgets/avatar.dart';
 import '../../../design_system/widgets/status_badge.dart';
-import '../swap.dart';
+import '../swap_repository.dart';
 
 class SwapCard extends StatelessWidget {
-  const SwapCard({super.key, required this.swap, this.onOpen});
+  const SwapCard({
+    super.key,
+    required this.swap,
+    required this.myUserId,
+    this.next,
+    this.onOpen,
+  });
 
-  final Swap swap;
+  final SwapRecord swap;
+  final String myUserId;
+  final SwapSession? next;
   final VoidCallback? onOpen;
 
   @override
@@ -28,27 +36,48 @@ class SwapCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Avatar(initials: swap.initials, color: avatarColorFor(swap.id), size: 40),
+            Avatar(
+              initials: swap.initials,
+              color: avatarColorFor(swap.otherUserId),
+              size: 40,
+              photoUrl: swap.otherUserPhotoUrl,
+            ),
             const SizedBox(width: Insets.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(swap.partner,
-                      style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                  Text(
+                    swap.otherUserName,
+                    style: text.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                   const SizedBox(height: 1),
-                  Text('${swap.mine} ↔ ${swap.theirs}',
-                      style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
-                  if (swap.next != null) ...[
+                  Text(
+                    '${swap.myTeachSkill(myUserId).name} ↔ ${swap.myLearnSkill(myUserId).name}',
+                    style: text.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  if (next != null) ...[
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        Icon(Icons.schedule_rounded, size: 12, color: scheme.onSurfaceVariant),
+                        Icon(
+                          Icons.schedule_rounded,
+                          size: 12,
+                          color: scheme.onSurfaceVariant,
+                        ),
                         const SizedBox(width: 4),
                         Flexible(
-                          child: Text('${swap.next} · ${swap.format}',
-                              style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                              overflow: TextOverflow.ellipsis),
+                          child: Text(
+                            '${next!.whenLabel} · ${next!.formatLabel}',
+                            style: text.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),
@@ -57,7 +86,7 @@ class SwapCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: Insets.sm),
-            StatusBadge(status: swap.status),
+            StatusBadge(status: swap.badgeStatus),
           ],
         ),
       ),

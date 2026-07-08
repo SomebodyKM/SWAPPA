@@ -45,21 +45,34 @@ class SegmentedToggle<T> extends StatelessWidget {
                 color: active ? scheme.surface : Colors.transparent,
                 borderRadius: BorderRadius.circular(Radii.sm - 4),
                 boxShadow: active
-                    ? [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 4)]
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.06),
+                          blurRadius: 4,
+                        ),
+                      ]
                     : null,
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (o.icon != null) ...[
-                    Icon(o.icon, size: 14, color: active ? scheme.onSurface : scheme.onSurfaceVariant),
+                    Icon(
+                      o.icon,
+                      size: 14,
+                      color: active
+                          ? scheme.onSurface
+                          : scheme.onSurfaceVariant,
+                    ),
                     const SizedBox(width: 4),
                   ],
                   Text(
                     o.label,
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: active ? scheme.onSurface : scheme.onSurfaceVariant,
-                        ),
+                      color: active
+                          ? scheme.onSurface
+                          : scheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -73,7 +86,12 @@ class SegmentedToggle<T> extends StatelessWidget {
 
 /// A single pill filter (all / local / remote). Active = filled primary.
 class PillFilter extends StatelessWidget {
-  const PillFilter({super.key, required this.label, required this.active, required this.onTap});
+  const PillFilter({
+    super.key,
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
 
   final String label;
   final bool active;
@@ -88,15 +106,17 @@ class PillFilter extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: active ? scheme.primary : scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+          color: active
+              ? scheme.primary
+              : scheme.surfaceContainerHighest.withValues(alpha: 0.6),
           borderRadius: BorderRadius.circular(Radii.pill),
         ),
         child: Text(
           label,
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: active ? scheme.onPrimary : scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-              ),
+            color: active ? scheme.onPrimary : scheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );

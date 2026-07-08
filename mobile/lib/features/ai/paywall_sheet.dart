@@ -34,38 +34,53 @@ class _Paywall extends StatelessWidget {
           height: 56,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [AppColors.primary, AppColors.accent]),
+            gradient: const LinearGradient(
+              colors: [AppColors.primary, AppColors.accent],
+            ),
             borderRadius: BorderRadius.circular(Radii.md),
           ),
-          child: const Icon(Icons.auto_awesome_rounded, size: 26, color: Colors.white),
+          child: const Icon(
+            Icons.auto_awesome_rounded,
+            size: 26,
+            color: Colors.white,
+          ),
         ),
         const SizedBox(height: Insets.md),
         Text('Go Premium', style: text.headlineMedium),
         const SizedBox(height: 2),
-        Text('Swap more, learn more, connect deeper.',
-            style: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+        Text(
+          'Swap more, learn more, connect deeper.',
+          style: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+        ),
         const SizedBox(height: Insets.lg),
-        ..._perks.map((p) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(Radii.sm),
+        ..._perks.map(
+          (p) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(Radii.sm),
+                  ),
+                  child: Icon(p.$1, size: 16, color: AppColors.primary),
+                ),
+                const SizedBox(width: Insets.md),
+                Expanded(
+                  child: Text(
+                    p.$2,
+                    style: text.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
                     ),
-                    child: Icon(p.$1, size: 16, color: AppColors.primary),
                   ),
-                  const SizedBox(width: Insets.md),
-                  Expanded(
-                    child: Text(p.$2, style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-                  ),
-                ],
-              ),
-            )),
+                ),
+              ],
+            ),
+          ),
+        ),
         const SizedBox(height: Insets.sm),
         Container(
           width: double.infinity,
@@ -81,28 +96,47 @@ class _Paywall extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.baseline,
                 textBaseline: TextBaseline.alphabetic,
                 children: [
-                  Text('£7.99', style: AppTypography.tabular(size: 24, color: scheme.onSurface)),
+                  Text(
+                    '£7.99',
+                    style: AppTypography.tabular(
+                      size: 24,
+                      color: scheme.onSurface,
+                    ),
+                  ),
                   const SizedBox(width: 4),
-                  Text('/ month', style: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+                  Text(
+                    '/ month',
+                    style: text.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 2),
-              Text('Cancel anytime · billed monthly · no contracts',
-                  style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+              Text(
+                'Cancel anytime · billed monthly · no contracts',
+                style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+              ),
             ],
           ),
         ),
         const SizedBox(height: Insets.lg),
         SizedBox(
           width: double.infinity,
-          child: FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Start Premium')),
+          child: FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Start Premium'),
+          ),
         ),
         const SizedBox(height: Insets.sm),
         SizedBox(
           width: double.infinity,
           child: TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Not now', style: TextStyle(color: scheme.onSurfaceVariant)),
+            child: Text(
+              'Not now',
+              style: TextStyle(color: scheme.onSurfaceVariant),
+            ),
           ),
         ),
       ],

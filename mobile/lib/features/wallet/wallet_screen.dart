@@ -1,23 +1,36 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/providers.dart';
+import '../../core/tier_limits.dart';
 import '../../design_system/app_colors.dart';
 import '../../design_system/app_typography.dart';
 import '../../design_system/tokens.dart';
 import '../ai/buy_boost_sheet.dart';
 import '../ai/paywall_sheet.dart';
+import '../auth/auth_controller.dart';
+import 'credit_repository.dart';
 import 'wallet_data.dart';
 
-class WalletScreen extends StatelessWidget {
+class WalletScreen extends ConsumerWidget {
   const WalletScreen({super.key});
 
-  static const int basic = 5;
-  static const int basicCap = 15;
-  static const int boost = 8;
-
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
+    final balanceAsync = ref.watch(creditBalanceProvider);
+    final txnsAsync = ref.watch(creditTransactionsProvider);
+
+    // Refresh whenever this tab becomes the active one — AppShell keeps
+    // every tab mounted (IndexedStack), so without this, switching back to
+    // Wallet would just show whatever was cached from the last visit.
+    ref.listen<int>(appTabIndexProvider, (previous, next) {
+      if (next == 3 && previous != 3) {
+        ref.invalidate(creditBalanceProvider);
+        ref.invalidate(creditTransactionsProvider);
+      }
+    });
 
     return Scaffold(
       body: SafeArea(
@@ -26,87 +39,160 @@ class WalletScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(Insets.lg, Insets.sm, Insets.lg, Insets.sm),
+              padding: const EdgeInsets.fromLTRB(
+                Insets.lg,
+                Insets.sm,
+                Insets.lg,
+                Insets.sm,
+              ),
               child: Text('Wallet', style: text.headlineSmall),
             ),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(Insets.lg, 4, Insets.lg, Insets.xxl),
-                children: [
-                  // Dual balances
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _BalanceCard(
-                          label: 'Basic Credits',
-                          value: basic,
-                          fraction: basic / basicCap,
-                          sub: 'Refills in 5 days',
-                          gradient: const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [AppColors.primary, Color(0xFF5B21B6)],
-                          ),
-                          fg: Colors.white,
-                          barBg: Colors.white24,
-                          barFg: Colors.white70,
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  ref.invalidate(creditBalanceProvider);
+                  ref.invalidate(creditTransactionsProvider);
+                },
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(
+                    Insets.lg,
+                    4,
+                    Insets.lg,
+                    Insets.xxl,
+                  ),
+                  children: [
+                    // Dual balances
+                    balanceAsync.when(
+                      loading: () => const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                      error: (e, _) => Text(
+                        'Couldn’t load your balance',
+                        style: text.bodyMedium?.copyWith(
+                          color: scheme.onSurfaceVariant,
                         ),
                       ),
-                      const SizedBox(width: Insets.md),
-                      Expanded(
-                        child: _BalanceCard(
-                          label: 'Boost Credits',
-                          value: boost,
-                          fraction: 1,
-                          sub: 'Never expire',
-                          gradient: const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [AppColors.accent, Color(0xFFCA8A04)],
+                      data: (balance) => Row(
+                        children: [
+                          Expanded(
+                            child: _BalanceCard(
+                              label: 'Basic Credits',
+                              value: balance.basicBalance,
+                              fraction: balance.basicCap == 0
+                                  ? 0
+                                  : balance.basicBalance / balance.basicCap,
+                              sub: _refillLabel(balance.nextRefillAt),
+                              gradient: const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [AppColors.primary, Color(0xFF5B21B6)],
+                              ),
+                              fg: Colors.white,
+                              barBg: Colors.white24,
+                              barFg: Colors.white70,
+                            ),
                           ),
-                          fg: AppColors.foreground,
-                          barBg: Colors.black12,
-                          barFg: Colors.black26,
+                          const SizedBox(width: Insets.md),
+                          Expanded(
+                            child: _BalanceCard(
+                              label: 'Boost Credits',
+                              value: balance.boostBalance,
+                              fraction: 1,
+                              sub: 'Never expire',
+                              gradient: const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [AppColors.accent, Color(0xFFCA8A04)],
+                              ),
+                              fg: AppColors.foreground,
+                              barBg: Colors.black12,
+                              barFg: Colors.black26,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: Insets.sm),
+                    Center(
+                      child: Text(
+                        'AI actions use Basic first, then Boost',
+                        style: text.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: Insets.sm),
-                  Center(
-                    child: Text('AI actions use Basic first, then Boost',
-                        style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
-                  ),
-                  const SizedBox(height: Insets.md),
+                    ),
+                    const SizedBox(height: Insets.md),
 
-                  // Buy boost
-                  _BuyBoostButton(onTap: () => showBuyBoostSheet(context)),
-                  const SizedBox(height: Insets.md),
+                    // Buy boost
+                    _BuyBoostButton(onTap: () => showBuyBoostSheet(context)),
+                    const SizedBox(height: Insets.md),
 
-                  // AI actions
-                  _CardSection(
-                    title: 'AI Actions',
-                    children: [
-                      for (final a in aiActions) _AiActionRow(action: a),
-                    ],
-                  ),
-                  const SizedBox(height: Insets.md),
+                    // AI actions
+                    _CardSection(
+                      title: 'AI Actions',
+                      children: [
+                        for (final a in aiActions) _AiActionRow(action: a),
+                      ],
+                    ),
+                    const SizedBox(height: Insets.md),
 
-                  // Ledger
-                  _CardSection(
-                    title: 'Transaction History',
-                    children: [for (final t in sampleTxns) _TxnRow(txn: t)],
-                  ),
-                  const SizedBox(height: Insets.md),
+                    // Ledger
+                    _CardSection(
+                      title: 'Transaction History',
+                      children: [
+                        txnsAsync.when(
+                          loading: () => const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                            child: Center(child: CircularProgressIndicator()),
+                          ),
+                          error: (e, _) => Padding(
+                            padding: const EdgeInsets.all(Insets.md),
+                            child: Text(
+                              'Couldn’t load transaction history',
+                              style: text.bodySmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          data: (txns) {
+                            if (txns.isEmpty) {
+                              return Padding(
+                                padding: const EdgeInsets.all(Insets.md),
+                                child: Text(
+                                  'No transactions yet',
+                                  style: text.bodySmall?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              );
+                            }
+                            return Column(
+                              children: [for (final t in txns) _TxnRow(txn: t)],
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: Insets.md),
 
-                  // Plan card
-                  _PlanCard(onExplore: () => showPaywallSheet(context)),
-                ],
+                    // Plan card
+                    _PlanCard(onExplore: () => showPaywallSheet(context)),
+                  ],
+                ),
               ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  static String _refillLabel(DateTime? nextRefillAt) {
+    if (nextRefillAt == null) return 'Refills monthly';
+    final days = nextRefillAt.difference(DateTime.now()).inDays;
+    if (days <= 0) return 'Refills today';
+    return 'Refills in $days ${days == 1 ? 'day' : 'days'}';
   }
 }
 
@@ -142,13 +228,21 @@ class _BalanceCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: TextStyle(
-                  color: fg.withValues(alpha: 0.8), fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(
+            label,
+            style: TextStyle(
+              color: fg.withValues(alpha: 0.8),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 4),
           Text('$value', style: AppTypography.tabular(size: 34, color: fg)),
           const SizedBox(height: 2),
-          Text(sub, style: TextStyle(color: fg.withValues(alpha: 0.7), fontSize: 11)),
+          Text(
+            sub,
+            style: TextStyle(color: fg.withValues(alpha: 0.7), fontSize: 11),
+          ),
           const SizedBox(height: 10),
           ClipRRect(
             borderRadius: BorderRadius.circular(Radii.pill),
@@ -192,17 +286,29 @@ class _BuyBoostButton extends StatelessWidget {
                 color: AppColors.accent,
                 borderRadius: BorderRadius.circular(Radii.sm),
               ),
-              child: const Icon(Icons.shopping_bag_rounded, size: 18, color: AppColors.foreground),
+              child: const Icon(
+                Icons.shopping_bag_rounded,
+                size: 18,
+                color: AppColors.foreground,
+              ),
             ),
             const SizedBox(width: Insets.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Buy Boost Credits',
-                      style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                  Text('Permanent · better value in bulk',
-                      style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+                  Text(
+                    'Buy Boost Credits',
+                    style: text.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    'Permanent · better value in bulk',
+                    style: text.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -235,7 +341,10 @@ class _CardSection extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.all(Insets.md),
-            child: Text(title, style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+            child: Text(
+              title,
+              style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
           ),
           Divider(height: 1, color: scheme.outlineVariant),
           ...children,
@@ -272,8 +381,16 @@ class _AiActionRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(action.label, style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                Text(action.desc, style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+                Text(
+                  action.label,
+                  style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                Text(
+                  action.desc,
+                  style: text.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
               ],
             ),
           ),
@@ -286,10 +403,19 @@ class _AiActionRow extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.monetization_on_rounded, size: 11, color: scheme.onSurfaceVariant),
+                Icon(
+                  Icons.monetization_on_rounded,
+                  size: 11,
+                  color: scheme.onSurfaceVariant,
+                ),
                 const SizedBox(width: 3),
-                Text('${action.cost}',
-                    style: AppTypography.tabular(size: 12, color: scheme.onSurfaceVariant)),
+                Text(
+                  '${action.cost}',
+                  style: AppTypography.tabular(
+                    size: 12,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
               ],
             ),
           ),
@@ -301,7 +427,42 @@ class _AiActionRow extends StatelessWidget {
 
 class _TxnRow extends StatelessWidget {
   const _TxnRow({required this.txn});
-  final Txn txn;
+  final CreditTxEntry txn;
+
+  static const _months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
+  static String _label(CreditTxEntry t) {
+    if (t.note != null && t.note!.isNotEmpty) return t.note!;
+    return switch (t.type) {
+      'grant' => 'Credits granted',
+      'refill' => 'Basic credits refilled',
+      'purchase' => 'Boost pack purchase',
+      'refund' => 'Credits refunded',
+      'spend' => switch (t.action) {
+        'icebreaker' => 'AI Icebreaker',
+        'insight' => 'Insight Report',
+        'rematch' => 'Deep Re-Match',
+        'profile_opt' => 'Profile Optimizer',
+        _ => 'AI action',
+      },
+      _ => 'Credit update',
+    };
+  }
+
+  static String _date(DateTime d) => '${d.day} ${_months[d.month - 1]}';
 
   @override
   Widget build(BuildContext context) {
@@ -322,22 +483,31 @@ class _TxnRow extends StatelessWidget {
                   : AppColors.primary.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
-            child: Text(positive ? '+' : '−',
-                style: TextStyle(
-                    color: positive ? AppColors.offerFg : AppColors.primary,
-                    fontWeight: FontWeight.w700)),
+            child: Text(
+              positive ? '+' : '−',
+              style: TextStyle(
+                color: positive ? AppColors.offerFg : AppColors.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
           const SizedBox(width: Insets.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(txn.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: text.bodySmall?.copyWith(fontWeight: FontWeight.w700)),
-                Text('${txn.date} · ${txn.basic ? "Basic" : "Boost"}',
-                    style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+                Text(
+                  _label(txn),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                Text(
+                  '${_date(txn.createdAt)} · ${txn.isBasic ? "Basic" : "Boost"}',
+                  style: text.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
               ],
             ),
           ),
@@ -354,21 +524,24 @@ class _TxnRow extends StatelessWidget {
   }
 }
 
-class _PlanCard extends StatelessWidget {
+class _PlanCard extends ConsumerWidget {
   const _PlanCard({required this.onExplore});
   final VoidCallback onExplore;
 
-  static const _perks = [
-    '2 match results shown',
-    '5 active swaps',
-    '15 Basic credits / week',
-    'Text chat only',
-  ];
-
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
+    final tier = ref.watch(authControllerProvider).user?.tier ?? 'free';
+    final isPremium = tier == 'premium';
+    final limits = TierLimits.of(tier);
+    final perks = [
+      '${limits.matchResults} match results shown',
+      '${limits.activeSwaps} active swaps',
+      '${limits.basicCreditCap} Basic credits / month',
+      if (!isPremium) 'Text chat only' else 'Multimedia chat — photos & audio',
+    ];
+
     return Container(
       padding: const EdgeInsets.all(Insets.lg),
       decoration: BoxDecoration(
@@ -381,9 +554,16 @@ class _PlanCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.card_giftcard_rounded, size: 16, color: AppColors.primary),
+              Icon(
+                Icons.card_giftcard_rounded,
+                size: 16,
+                color: AppColors.primary,
+              ),
               const SizedBox(width: Insets.sm),
-              Text('Free Plan', style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+              Text(
+                isPremium ? 'Premium Plan' : 'Free Plan',
+                style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
               const Spacer(),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -391,36 +571,49 @@ class _PlanCard extends StatelessWidget {
                   color: scheme.surfaceContainerHighest.withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(Radii.pill),
                 ),
-                child: Text('Current',
-                    style: text.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+                child: Text(
+                  'Current',
+                  style: text.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
               ),
             ],
           ),
           const SizedBox(height: Insets.md),
-          for (final p in _perks)
+          for (final p in perks)
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Row(
                 children: [
                   Icon(Icons.check_rounded, size: 13, color: AppColors.success),
                   const SizedBox(width: 8),
-                  Text(p, style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+                  Text(
+                    p,
+                    style: text.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
                 ],
               ),
             ),
-          const SizedBox(height: Insets.sm),
-          SizedBox(
-            width: double.infinity,
-            height: 44,
-            child: FilledButton(
-              onPressed: onExplore,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(44),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.md)),
+          if (!isPremium) ...[
+            const SizedBox(height: Insets.sm),
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: FilledButton(
+                onPressed: onExplore,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(44),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(Radii.md),
+                  ),
+                ),
+                child: const Text('Explore Premium'),
               ),
-              child: const Text('Explore Premium'),
             ),
-          ),
+          ],
         ],
       ),
     );

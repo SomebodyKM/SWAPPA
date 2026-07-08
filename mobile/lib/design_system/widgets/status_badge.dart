@@ -15,13 +15,16 @@ class StatusBadge extends StatelessWidget {
     final (bg, fg) = _styleFor(status);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(Radii.pill)),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(Radii.pill),
+      ),
       child: Text(
         status,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: fg,
-              fontWeight: FontWeight.w700,
-            ),
+          color: fg,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

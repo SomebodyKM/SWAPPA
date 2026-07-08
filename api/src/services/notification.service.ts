@@ -62,10 +62,18 @@ export const notificationService = {
       // Offline: fall back to FCM push.
       const user = await User.findById(input.userId).select('pushTokens');
       if (user?.pushTokens?.length) {
+        // FCM data payloads are string-only — mirror the socket payload's
+        // `data` fields (swapId, etc.) so a tapped push can deep-link the
+        // same way a tapped in-app notification does, instead of only
+        // carrying `type`/`notificationId`.
+        const stringData: Record<string, string> = {};
+        for (const [key, value] of Object.entries(doc.data ?? {})) {
+          stringData[key] = typeof value === 'string' ? value : JSON.stringify(value);
+        }
         await pushService.send(user.pushTokens, {
           title: doc.title || 'SWAPPA',
           body: doc.body,
-          data: { type: doc.type, notificationId: String(doc._id) },
+          data: { ...stringData, type: doc.type, notificationId: String(doc._id) },
         });
       } else {
         logger.debug(`[notify] user ${input.userId} offline with no push tokens`);

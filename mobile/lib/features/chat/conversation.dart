@@ -1,60 +1,135 @@
+/// A single chat message. Mirrors the backend `Message` document
+/// (`GET /conversations/:id/messages`, and realtime `message:*` socket events).
 class ChatMessage {
-  const ChatMessage({required this.fromMe, required this.text, required this.time});
-  final bool fromMe;
-  final String text;
-  final String time;
-}
-
-class Conversation {
-  const Conversation({
+  const ChatMessage({
     required this.id,
-    required this.name,
-    required this.last,
-    required this.time,
-    required this.unread,
-    required this.messages,
+    required this.conversationId,
+    required this.senderId,
+    required this.type,
+    this.body,
+    this.mediaUrl,
+    required this.createdAt,
+    this.editedAt,
+    this.deletedAt,
   });
 
   final String id;
-  final String name;
-  final String last;
-  final String time; // "2m", "1h", "3d"
-  final int unread;
-  final List<ChatMessage> messages;
+  final String conversationId;
+  final String senderId;
+  final String type; // text | image | audio | video | system
+  final String? body;
+  final String? mediaUrl;
+  final DateTime createdAt;
+  final DateTime? editedAt;
+  final DateTime? deletedAt;
 
-  String get initials {
-    final parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.length == 1) return parts.first.substring(0, 2).toUpperCase();
-    return (parts.first[0] + parts.last[0]).toUpperCase();
+  bool get isDeleted => deletedAt != null;
+  bool isFromMe(String myUserId) => senderId == myUserId;
+
+  String get timeLabel {
+    final local = createdAt.toLocal();
+    final h = local.hour.toString().padLeft(2, '0');
+    final m = local.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  ChatMessage copyWith({
+    String? body,
+    DateTime? editedAt,
+    DateTime? deletedAt,
+  }) => ChatMessage(
+    id: id,
+    conversationId: conversationId,
+    senderId: senderId,
+    type: type,
+    body: body ?? this.body,
+    mediaUrl: mediaUrl,
+    createdAt: createdAt,
+    editedAt: editedAt ?? this.editedAt,
+    deletedAt: deletedAt ?? this.deletedAt,
+  );
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    DateTime? parse(dynamic v) =>
+        v == null ? null : DateTime.tryParse(v.toString());
+    return ChatMessage(
+      id: (json['_id'] ?? json['id']).toString(),
+      conversationId: (json['conversation'] ?? '').toString(),
+      senderId: (json['sender'] ?? '').toString(),
+      type: (json['type'] ?? 'text') as String,
+      body: json['body'] as String?,
+      mediaUrl: json['mediaUrl'] as String?,
+      createdAt: parse(json['createdAt']) ?? DateTime.now(),
+      editedAt: parse(json['editedAt']),
+      deletedAt: parse(json['deletedAt']),
+    );
   }
 }
 
-const List<Conversation> sampleConversations = [
-  Conversation(
-    id: '1', name: 'Maya Chen', last: "How about Saturday morning? I'm free from 9am",
-    time: '2m', unread: 2,
-    messages: [
-      ChatMessage(fromMe: false, text: 'Hi! I saw you want to learn Mandarin — that sounds like a perfect swap! ✨', time: 'Yesterday'),
-      ChatMessage(fromMe: true, text: "Amazing! I've been playing guitar for 3 years and would love to help a beginner.", time: 'Yesterday'),
-      ChatMessage(fromMe: false, text: 'Want to set up our first session?', time: 'Today'),
-      ChatMessage(fromMe: false, text: "How about Saturday morning? I'm free from 9am", time: '2m'),
-    ],
-  ),
-  Conversation(
-    id: '2', name: 'Priya Sharma', last: 'The watercolour set I recommended is on sale!',
-    time: '1h', unread: 0,
-    messages: [
-      ChatMessage(fromMe: false, text: 'Welcome to our swap! So excited to teach you watercolour 🎨', time: 'Mon'),
-      ChatMessage(fromMe: true, text: 'Me too! Just ordered some supplies.', time: 'Mon'),
-      ChatMessage(fromMe: false, text: 'The watercolour set I recommended is on sale!', time: '1h'),
-    ],
-  ),
-  Conversation(
-    id: '3', name: 'Luca Romano', last: 'Was great swapping! Cacio e pepe forever 🍝',
-    time: '3d', unread: 0,
-    messages: [
-      ChatMessage(fromMe: false, text: 'Was great swapping with you! Cacio e pepe forever 🍝', time: '3d'),
-      ChatMessage(fromMe: true, text: 'Thank you so much — I finally nailed the emulsification!', time: '3d'),
-    ],
-  ),
-];
+/// A conversation between the signed-in user and one other participant.
+/// Mirrors the backend `Conversation` document (`GET/POST /conversations`),
+/// with `participants` already resolved down to "the other person".
+class Conversation {
+  const Conversation({
+    required this.id,
+    required this.otherUserId,
+    required this.otherUserName,
+    this.otherUserPhotoUrl,
+    this.lastMessagePreview,
+    this.lastMessageAt,
+    this.unreadCount = 0,
+  });
+
+  final String id;
+  final String otherUserId;
+  final String otherUserName;
+  final String? otherUserPhotoUrl;
+  final String? lastMessagePreview;
+  final DateTime? lastMessageAt;
+  final int unreadCount;
+
+  String get initials {
+    final parts = otherUserName.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts.first.isEmpty) return '?';
+    if (parts.length == 1) {
+      final s = parts.first;
+      return (s.length >= 2 ? s.substring(0, 2) : s).toUpperCase();
+    }
+    return (parts.first[0] + parts.last[0]).toUpperCase();
+  }
+
+  /// Compact relative time for the conversation list ("2m", "1h", "3d").
+  String get relativeTime {
+    final t = lastMessageAt;
+    if (t == null) return '';
+    final diff = DateTime.now().difference(t);
+    if (diff.inMinutes < 1) return 'now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
+    if (diff.inHours < 24) return '${diff.inHours}h';
+    return '${diff.inDays}d';
+  }
+
+  factory Conversation.fromJson(Map<String, dynamic> json, String myUserId) {
+    final participants = ((json['participants'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((p) => p.cast<String, dynamic>())
+        .toList();
+    final other = participants.firstWhere(
+      (p) => (p['_id'] ?? p['id']).toString() != myUserId,
+      orElse: () => participants.isNotEmpty
+          ? participants.first
+          : const <String, dynamic>{},
+    );
+    return Conversation(
+      id: (json['_id'] ?? json['id']).toString(),
+      otherUserId: (other['_id'] ?? other['id'] ?? '').toString(),
+      otherUserName: (other['displayName'] ?? 'Unknown') as String,
+      otherUserPhotoUrl: other['photoUrl'] as String?,
+      lastMessagePreview: json['lastMessagePreview'] as String?,
+      lastMessageAt: json['lastMessageAt'] != null
+          ? DateTime.tryParse(json['lastMessageAt'].toString())
+          : null,
+      unreadCount: (json['unreadCount'] as num?)?.toInt() ?? 0,
+    );
+  }
+}

@@ -5,6 +5,7 @@ import { User } from '../models/user.model';
 import { tierLimits } from '../config/limits';
 import { ANTI_SPAM } from '../config/limits';
 import { emitToRoom, notificationService } from './notification.service';
+import { safetyService } from './safety.service';
 import { Errors } from '../utils/errors';
 
 function convRoom(conversationId: string): string {
@@ -23,9 +24,17 @@ async function assertParticipant(conversationId: string, userId: string): Promis
 export const messagingService = {
   /** Find-or-create the conversation for a pair of users. */
   async getOrCreateConversation(aId: string, bId: string): Promise<ConversationDoc> {
+    if (aId === bId) throw Errors.badRequest('Cannot message yourself');
+
     const pairKey = pairKeyFor(aId, bId);
     const existing = await Conversation.findOne({ pairKey });
     if (existing) return existing;
+
+    const blocked = await safetyService.blockedUserIds(aId);
+    if (blocked.some((id) => String(id) === bId)) {
+      throw Errors.forbidden('You can’t message this user', 'BLOCKED');
+    }
+
     try {
       return await Conversation.create({
         participants: [new Types.ObjectId(aId), new Types.ObjectId(bId)],
@@ -39,10 +48,21 @@ export const messagingService = {
     }
   },
 
-  async listConversations(userId: string): Promise<ConversationDoc[]> {
-    return Conversation.find({ participants: userId })
+  async listConversations(userId: string) {
+    const convs = await Conversation.find({ participants: userId })
       .sort({ lastMessageAt: -1, updatedAt: -1 })
       .populate('participants', 'displayName photoUrl ratingAvg');
+
+    return Promise.all(
+      convs.map(async (c) => {
+        const unreadCount = await Message.countDocuments({
+          conversation: c._id,
+          sender: { $ne: new Types.ObjectId(userId) },
+          readBy: { $ne: new Types.ObjectId(userId) },
+        });
+        return { ...c.toJSON(), unreadCount };
+      }),
+    );
   },
 
   async getConversation(id: string, userId: string): Promise<ConversationDoc> {
@@ -108,15 +128,25 @@ export const messagingService = {
     emitToRoom(convRoom(conversationId), 'message:new', { message: msg.toJSON() });
 
     // Notify the other participant(s) (socket when online, FCM fallback when offline).
+    // Title is the sender's name (not a generic "New message") so both the
+    // OS notification and in-app popup read like a real chat app; photoUrl
+    // rides along so the client can show it as the notification's avatar.
+    const sender = await User.findById(senderId).select('displayName photoUrl');
     const recipients = conv.participants.map(String).filter((id) => id !== senderId);
     await Promise.all(
       recipients.map((userId) =>
         notificationService.notify({
           userId,
           type: 'message_received',
-          title: 'New message',
+          title: sender?.displayName || 'New message',
           body: preview.slice(0, 120),
-          data: { conversationId, senderId, messageId: String(msg._id) },
+          data: {
+            conversationId,
+            senderId,
+            messageId: String(msg._id),
+            senderName: sender?.displayName ?? '',
+            senderPhotoUrl: sender?.photoUrl ?? '',
+          },
         }),
       ),
     );

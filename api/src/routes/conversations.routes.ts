@@ -16,8 +16,10 @@ const sendBody = z.object({
   body: z.string().max(4000).optional(),
   mediaUrl: z.string().url().optional(),
 });
+const createBody = z.object({ targetUserId: z.string().length(24) });
 
 router.get('/', authGuard, messagingController.listConversations);
+router.post('/', authGuard, validate({ body: createBody }), messagingController.createConversation);
 router.get('/:id', authGuard, validate({ params: idParam }), messagingController.getConversation);
 router.get(
   '/:id/messages',

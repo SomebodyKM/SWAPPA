@@ -9,6 +9,9 @@ Future<T?> showAppSheet<T>(BuildContext context, {required Widget child}) {
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
+    // Material 3 caps modal bottom sheets at 640dp wide by default (centering
+    // them on larger screens) — override so it always spans the full width.
+    constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width),
     builder: (context) => AppSheet(child: child),
   );
 }
@@ -21,10 +24,15 @@ class AppSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.88),
+      width: double.infinity,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.88,
+      ),
       decoration: BoxDecoration(
         color: scheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(Radii.xl)),
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(Radii.xl),
+        ),
       ),
       child: SafeArea(
         top: false,
@@ -42,7 +50,12 @@ class AppSheet extends StatelessWidget {
             ),
             Flexible(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, Insets.sm, 20, Insets.xl),
+                padding: const EdgeInsets.fromLTRB(
+                  20,
+                  Insets.sm,
+                  20,
+                  Insets.xl,
+                ),
                 child: child,
               ),
             ),

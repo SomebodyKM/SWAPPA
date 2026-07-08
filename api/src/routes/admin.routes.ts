@@ -21,6 +21,7 @@ const skillEditBody = z.object({
 const reasonBody = z.object({ reason: z.string().min(1).max(1000) });
 const roleBody = z.object({ role: z.enum(['user', 'admin']) });
 const noteBody = z.object({ note: z.string().max(1000).optional() });
+const bugStatusQuery = z.object({ status: z.enum(['open', 'resolved', 'dismissed']).optional() });
 
 // Skills
 router.get('/skills/pending', adminController.pendingSkills);
@@ -39,6 +40,19 @@ router.patch('/users/:id/role', validate({ params: idParam, body: roleBody }), a
 router.get('/reports', adminController.listReports);
 router.post('/reports/:id/resolve', validate({ params: idParam, body: noteBody }), adminController.resolveReport);
 router.post('/reports/:id/dismiss', validate({ params: idParam, body: noteBody }), adminController.dismissReport);
+
+// Bug reports
+router.get('/bug-reports', validate({ query: bugStatusQuery }), adminController.listBugReports);
+router.post(
+  '/bug-reports/:id/resolve',
+  validate({ params: idParam, body: noteBody }),
+  adminController.resolveBugReport,
+);
+router.post(
+  '/bug-reports/:id/dismiss',
+  validate({ params: idParam, body: noteBody }),
+  adminController.dismissBugReport,
+);
 
 // Audit + metrics
 router.get('/audit-log', adminController.auditLog);

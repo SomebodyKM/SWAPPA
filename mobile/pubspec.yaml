@@ -41,6 +41,18 @@ dependencies:
   flutter_secure_storage: ^10.3.1
   google_fonts: ^8.1.0
   flutter_svg: ^2.3.0
+  image_picker: ^1.2.0
+  image_cropper: ^11.0.0
+  geolocator: ^13.0.0
+  # OpenStreetMap-based map for now (free, no account/token needed) — the
+  # location-feature spec calls for Mapbox, but product direction is to start
+  # here and swap to Google Maps in a later update. See discovery_map_view.dart.
+  flutter_map: ^8.1.1
+  flutter_map_marker_cluster: ^8.2.2
+  latlong2: ^0.9.1
+  firebase_core: ^4.11.0
+  firebase_messaging: ^16.4.1
+  flutter_local_notifications: ^22.0.1
 
 dev_dependencies:
   flutter_test:

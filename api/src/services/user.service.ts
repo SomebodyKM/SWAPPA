@@ -1,14 +1,29 @@
-import { User, UserDoc, LocationPrecision } from '../models/user.model';
-import { isValidLngLat, makePoint } from '../utils/geo';
-import { Errors } from '../utils/errors';
+import bcrypt from 'bcrypt';
+import { User, UserDoc } from '../models/user.model';
+import { SkillTag } from '../models/skillTag.model';
+import { Verification } from '../models/verification.model';
+import { CreditTransaction } from '../models/creditTransaction.model';
+import { AIRequest } from '../models/aiRequest.model';
+import { Subscription } from '../models/subscription.model';
+import { Notification } from '../models/notification.model';
+import { Review } from '../models/review.model';
+import { Report } from '../models/report.model';
+import { Session } from '../models/session.model';
+import { Swap } from '../models/swap.model';
+import { Conversation } from '../models/conversation.model';
+import { Message } from '../models/message.model';
+import { Errors, AppError } from '../utils/errors';
+import { assertStrongPassword } from '../utils/passwordStrength';
+import { verificationService } from './verification.service';
+
+const SALT_ROUNDS = 12;
 
 export interface UpdateProfileInput {
   displayName?: string;
   bio?: string;
   photoUrl?: string;
-  location?: { lng: number; lat: number };
-  locationPrecision?: LocationPrecision;
-  consent?: boolean; // required to set precise location
+  phone?: string;
+  onboardingComplete?: boolean; // set once the post-signup profile+skills setup is done
 }
 
 export const userService = {
@@ -25,18 +40,10 @@ export const userService = {
     if (input.displayName !== undefined) user.displayName = input.displayName;
     if (input.bio !== undefined) user.bio = input.bio;
     if (input.photoUrl !== undefined) user.photoUrl = input.photoUrl;
+    if (input.phone !== undefined) user.phone = input.phone;
 
-    if (input.location) {
-      const { lng, lat } = input.location;
-      if (!isValidLngLat(lng, lat)) throw Errors.badRequest('Invalid coordinates');
-      user.location = makePoint(lng, lat);
-    }
-
-    if (input.locationPrecision) {
-      if (input.locationPrecision === 'precise' && !input.consent) {
-        throw Errors.badRequest('Explicit consent is required to share precise location');
-      }
-      user.locationPrecision = input.locationPrecision;
+    if (input.onboardingComplete !== undefined) {
+      user.onboardingComplete = input.onboardingComplete;
     }
 
     await user.save();
@@ -47,8 +54,66 @@ export const userService = {
     await User.updateOne({ _id: userId }, { $addToSet: { pushTokens: token } });
   },
 
+  /**
+   * Changes the account email and immediately re-sends a verification code —
+   * the new address is unverified until confirmed via `/auth/verify-email`,
+   * mirroring the registration flow.
+   */
+  async changeEmail(userId: string, email: string): Promise<UserDoc> {
+    const normalized = email.toLowerCase().trim();
+    const user = await User.findById(userId);
+    if (!user) throw Errors.notFound('User not found');
+    if (user.email === normalized) {
+      throw Errors.badRequest('That’s already your email', { field: 'email' });
+    }
+    const taken = await User.exists({ email: normalized, _id: { $ne: userId } });
+    if (taken) throw Errors.badRequest('That email is already in use', { field: 'email' });
+
+    user.email = normalized;
+    user.emailVerified = false;
+    await user.save();
+    await verificationService.sendEmailCode(user);
+    return user;
+  },
+
+  /** Verifies the current password before setting a new one (also zxcvbn-checked). */
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    const user = await User.findById(userId).select('+passwordHash');
+    if (!user) throw Errors.notFound('User not found');
+
+    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!ok) {
+      throw new AppError(400, 'WRONG_PASSWORD', 'Current password is incorrect', {
+        field: 'currentPassword',
+      });
+    }
+    assertStrongPassword(newPassword, [user.email ?? '', user.displayName]);
+
+    user.passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    await user.save();
+  },
+
   async deleteAccount(userId: string): Promise<void> {
-    // v1: hard delete. Retention/anonymization policy is a follow-up (analysis U2).
+    // Hard delete the user and everything keyed to them, so the email/phone is
+    // freed and no orphaned data remains. (Retention/anonymization policy for
+    // production is a follow-up — analysis U2.)
+    const convs = await Conversation.find({ participants: userId }).select('_id');
+    const convIds = convs.map((c) => c._id);
+
+    await Promise.all([
+      SkillTag.deleteMany({ user: userId }),
+      Verification.deleteMany({ user: userId }),
+      CreditTransaction.deleteMany({ user: userId }),
+      AIRequest.deleteMany({ user: userId }),
+      Subscription.deleteMany({ user: userId }),
+      Notification.deleteMany({ user: userId }),
+      Review.deleteMany({ $or: [{ reviewer: userId }, { reviewee: userId }] }),
+      Report.deleteMany({ $or: [{ reporter: userId }, { target: userId }] }),
+      Session.deleteMany({ $or: [{ teacher: userId }, { learner: userId }] }),
+      Swap.deleteMany({ participants: userId }),
+      Message.deleteMany({ conversation: { $in: convIds } }),
+    ]);
+    await Conversation.deleteMany({ participants: userId });
     await User.deleteOne({ _id: userId });
   },
 };

@@ -13,6 +13,13 @@ class SocketClient {
 
   io.Socket? get socket => _socket;
 
+  /// Connects if not already connected. Safe to call repeatedly (e.g. every
+  /// time the Chat tab is opened) — reuses the existing socket otherwise.
+  Future<io.Socket> ensureConnected() async {
+    if (_socket != null && _socket!.connected) return _socket!;
+    return connect();
+  }
+
   Future<io.Socket> connect() async {
     final token = await _tokens.accessToken;
     final socket = io.io(

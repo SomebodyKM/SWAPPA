@@ -9,11 +9,19 @@ import '../tokens.dart';
 class SkillTag extends StatelessWidget {
   const SkillTag._({required this.label, required this.bg, required this.fg});
 
-  factory SkillTag.offer(String skill) =>
-      SkillTag._(label: 'teaches $skill', bg: AppColors.offerBg, fg: AppColors.offerFg);
+  /// [bare] drops the "teaches "/"wants " prefix — for use under a section
+  /// header (e.g. a "Teach:" label) that already establishes the category.
+  factory SkillTag.offer(String skill, {bool bare = false}) => SkillTag._(
+    label: bare ? skill : 'teaches $skill',
+    bg: AppColors.offerBg,
+    fg: AppColors.offerFg,
+  );
 
-  factory SkillTag.want(String skill) =>
-      SkillTag._(label: 'wants $skill', bg: AppColors.wantBg, fg: AppColors.wantFg);
+  factory SkillTag.want(String skill, {bool bare = false}) => SkillTag._(
+    label: bare ? skill : 'wants $skill',
+    bg: AppColors.wantBg,
+    fg: AppColors.wantFg,
+  );
 
   final String label;
   final Color bg;
@@ -23,13 +31,18 @@ class SkillTag extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(Radii.pill)),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(Radii.pill),
+      ),
       child: Text(
         label,
-        style: Theme.of(context)
-            .textTheme
-            .labelMedium
-            ?.copyWith(color: fg, fontWeight: FontWeight.w700),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+          color: fg,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

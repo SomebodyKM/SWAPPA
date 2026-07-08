@@ -24,7 +24,10 @@ class SoftPaywall extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(
-                alpha: Theme.of(context).brightness == Brightness.dark ? 0.45 : 0.14),
+              alpha: Theme.of(context).brightness == Brightness.dark
+                  ? 0.45
+                  : 0.14,
+            ),
             blurRadius: 28,
             offset: const Offset(0, 12),
           ),
@@ -40,12 +43,18 @@ class SoftPaywall extends StatelessWidget {
               color: AppColors.primary,
               borderRadius: BorderRadius.circular(Radii.md),
             ),
-            child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 20),
+            child: const Icon(
+              Icons.auto_awesome_rounded,
+              color: Colors.white,
+              size: 20,
+            ),
           ),
           const SizedBox(height: Insets.md),
-          Text('$hiddenCount more matches waiting',
-              style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-              textAlign: TextAlign.center),
+          Text(
+            '$hiddenCount more matches waiting',
+            style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 4),
           Text(
             'Premium reveals the full ranked list and unlocks wider radius matching.',
@@ -60,7 +69,9 @@ class SoftPaywall extends StatelessWidget {
               onPressed: onExplore,
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(44),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.md)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(Radii.md),
+                ),
               ),
               child: const Text('Explore Premium'),
             ),

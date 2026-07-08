@@ -14,6 +14,7 @@ const blockBody = z.object({ targetUserId: z.string().length(24) });
 const targetParam = z.object({ targetUserId: z.string().length(24) });
 
 router.get('/blocks', authGuard, safetyController.listBlocks);
+router.get('/reports', authGuard, safetyController.listMyReports);
 router.post('/reports', authGuard, validate({ body: reportBody }), safetyController.report);
 router.post('/blocks', authGuard, validate({ body: blockBody }), safetyController.block);
 router.delete('/blocks/:targetUserId', authGuard, validate({ params: targetParam }), safetyController.unblock);

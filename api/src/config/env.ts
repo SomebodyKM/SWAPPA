@@ -22,6 +22,27 @@ const envSchema = z.object({
 
   REVENUECAT_WEBHOOK_SECRET: z.string().optional(),
 
+  // Server-only key for Places Autocomplete/Details + Geocoding (never shipped
+  // to the Flutter bundle). Restrict it to those APIs + this server's IP(s).
+  GOOGLE_MAPS_SERVER_KEY: z.string().optional(),
+
+  // Salts the deterministic per-user location jitter (see locationPresenter.ts)
+  // so the offset can't be reproduced by anyone who only knows the user id.
+  // Override in production; the dev default is fine for local/staging.
+  LOCATION_FUZZ_SALT: z.string().default('dev-location-fuzz-salt'),
+
+  // Email. Priority: SMTP (e.g. SMTP2GO) → Resend → console fallback.
+  // MAIL_FROM is the verified sender, e.g. 'SWAPPA <verify@yourdomain>'.
+  MAIL_FROM: z.string().optional(),
+  // Generic SMTP (SMTP2GO/Brevo/SendGrid/Mailjet/…).
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().optional(),
+  SMTP_SECURE: z.coerce.boolean().optional(), // true for port 465; else STARTTLS
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  // Resend (SDK) — alternative to SMTP.
+  RESEND_API_KEY: z.string().optional(),
+
   FCM_PROJECT_ID: z.string().optional(),
   FCM_CLIENT_EMAIL: z.string().optional(),
   FCM_PRIVATE_KEY: z.string().optional(),

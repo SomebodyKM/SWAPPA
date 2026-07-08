@@ -63,6 +63,11 @@ export const reviewService = {
     return review;
   },
 
+  /** The requester's own review of a swap, if any — lets the client show "leave a review" vs "edit your review" without guessing. */
+  async findMine(swapId: string, reviewerId: string): Promise<ReviewDoc | null> {
+    return Review.findOne({ swap: swapId, reviewer: reviewerId });
+  },
+
   async edit(
     reviewId: string,
     userId: string,

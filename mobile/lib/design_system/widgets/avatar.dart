@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Circular initials avatar with a solid brand-ish background. Optionally shows
-/// a colored ring for status (online / mutual match).
+/// Circular avatar — shows [photoUrl] when set (falling back to initials on
+/// load failure), otherwise a solid brand-ish background with initials.
+/// Optionally shows a colored ring for status (online / mutual match).
 class Avatar extends StatelessWidget {
   const Avatar({
     super.key,
@@ -10,12 +11,16 @@ class Avatar extends StatelessWidget {
     required this.color,
     this.size = 48,
     this.ringColor,
+    this.photoUrl,
+    this.initialsColor = Colors.white,
   });
 
   final String initials;
   final Color color;
   final double size;
   final Color? ringColor;
+  final String? photoUrl;
+  final Color initialsColor;
 
   @override
   Widget build(BuildContext context) {
@@ -24,13 +29,16 @@ class Avatar extends StatelessWidget {
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      child: Text(
-        initials,
-        style: GoogleFonts.fredoka(
-          fontSize: size * 0.36,
-          fontWeight: FontWeight.w600,
-          color: Colors.white,
-        ),
+      child: ClipOval(
+        child: photoUrl != null
+            ? Image.network(
+                photoUrl!,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => _initialsText(),
+              )
+            : _initialsText(),
       ),
     );
     if (ringColor == null) return circle;
@@ -43,6 +51,15 @@ class Avatar extends StatelessWidget {
       child: circle,
     );
   }
+
+  Widget _initialsText() => Text(
+    initials,
+    style: GoogleFonts.fredoka(
+      fontSize: size * 0.36,
+      fontWeight: FontWeight.w600,
+      color: initialsColor,
+    ),
+  );
 }
 
 /// Deterministic accent color for an avatar based on a seed (name/id), drawn

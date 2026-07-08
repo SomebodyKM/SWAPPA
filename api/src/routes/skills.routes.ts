@@ -11,11 +11,14 @@ const browseQuery = z.object({
   all: z.coerce.boolean().optional(),
 });
 const idParam = z.object({ id: z.string().length(24) });
+const createBody = z.object({ name: z.string().min(1).max(80), category: z.string().min(1).max(60) });
 
 router.get('/', authGuard, validate({ query: browseQuery }), skillController.browse);
 router.get('/categories', authGuard, skillController.categories);
 router.get('/:id', authGuard, validate({ params: idParam }), skillController.read);
-
-// Catalog mutation (create/edit/delete) is admin-only — see /admin/skills (US9, FR-040).
+// Any signed-in user can propose a brand-new skill — it always lands as
+// `pending` for admin review, never directly in the approved catalog.
+// Editing/deleting/approving is admin-only — see /admin/skills (US9, FR-040).
+router.post('/', authGuard, validate({ body: createBody }), skillController.create);
 
 export default router;

@@ -5,8 +5,8 @@ import { SwapStatus } from '../models/swap.model';
 
 export const swapController: Record<string, RequestHandler> = {
   list: async (req, res) => {
-    const q = (res.locals.query ?? {}) as { status?: SwapStatus };
-    res.json({ items: await swapService.listSwaps(req.auth!.userId, q.status) });
+    const q = (res.locals.query ?? {}) as { status?: SwapStatus; partnerId?: string };
+    res.json({ items: await swapService.listSwaps(req.auth!.userId, q.status, q.partnerId) });
   },
 
   read: async (req, res) => {
@@ -32,7 +32,12 @@ export const swapController: Record<string, RequestHandler> = {
   },
 
   cancel: async (req, res) => {
-    res.json(await swapService.cancelSwap(String(req.params.id), req.auth!.userId));
+    const body = req.body as { reason?: string };
+    res.json(await swapService.cancelSwap(String(req.params.id), req.auth!.userId, body.reason));
+  },
+
+  finish: async (req, res) => {
+    res.json(await swapService.confirmFinish(String(req.params.id), req.auth!.userId));
   },
 
   abandon: async (req, res) => {
