@@ -47,7 +47,42 @@ class SwappaApp extends ConsumerWidget {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: mode,
+      // Web only — every mobile/native build passes `child` straight through
+      // untouched. On web, `ConstrainedBox`'s maxWidth only ever caps the
+      // width; a browser window narrower than that (e.g. a phone browser)
+      // still gets the full available width, so this never shrinks anything
+      // below what mobile already does.
+      builder: (context, child) {
+        if (!kIsWeb || child == null) return child ?? const SizedBox.shrink();
+        return _WebMaxWidthFrame(child: child);
+      },
       home: const _AuthGate(),
+    );
+  }
+}
+
+/// Centers the app in a phone-width column on web instead of letting it
+/// stretch across a wide browser window — everything (dialogs, bottom
+/// sheets, snackbars included, since they all render inside the Navigator's
+/// own Overlay which sits below this in the tree) stays within the frame.
+class _WebMaxWidthFrame extends StatelessWidget {
+  const _WebMaxWidthFrame({required this.child});
+  final Widget child;
+
+  static const _maxWidth = 480.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      // Same background as every screen's own Scaffold — no visual "frame"
+      // separating the outer area from the constrained content.
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _maxWidth),
+          child: child,
+        ),
+      ),
     );
   }
 }

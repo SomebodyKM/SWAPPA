@@ -54,3 +54,25 @@ services:
         sync: false
       - key: FCM_PRIVATE_KEY
         sync: false
+
+  - type: web
+    name: swappa-web
+    runtime: static
+    rootDir: mobile
+    # Static-site builders don't ship the Flutter SDK, so the build command
+    # fetches it itself — pinned to the exact stable version this was built
+    # and tested against locally (`flutter --version`).
+    buildCommand: |
+      git clone https://github.com/flutter/flutter.git -b 3.44.4 --depth 1 _flutter
+      export PATH="$PATH:$PWD/_flutter/bin"
+      flutter config --enable-web
+      flutter pub get
+      flutter build web --release --dart-define=API_BASE_URL=$API_BASE_URL
+    staticPublishPath: build/web
+    envVars:
+      - key: API_BASE_URL
+        value: https://swappa-api.onrender.com/api/v1
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
