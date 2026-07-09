@@ -1,3 +1,4 @@
+import dns from 'node:dns';
 import { env } from '../../config/env';
 import { logger } from '../../utils/logger';
 
@@ -44,12 +45,23 @@ class SmtpMailer implements Mailer {
   private async getTransporter() {
     if (this.transporter) return this.transporter;
     const nodemailer = await import('nodemailer');
+
+    // nodemailer ^9 resolves both A and AAAA records for the SMTP host and
+    // picks *randomly* between them (its own dual-stack fallback logic —
+    // there's no `family` option that restricts this). Render's containers
+    // have no outbound IPv6 route, so whenever it happens to pick an IPv6
+    // address for smtp.gmail.com the connection fails with ENETUNREACH.
+    // Resolving to a literal IPv4 address ourselves sidesteps that resolver
+    // entirely (a literal IP short-circuits it); `servername` keeps TLS
+    // certificate/SNI validation against the real hostname.
+    const { address } = await dns.promises.lookup(this.host, { family: 4 });
     this.transporter = nodemailer.createTransport({
-      host: this.host,
+      host: address,
       port: this.port,
       secure: this.secure,
       auth: { user: this.user, pass: this.pass },
-    });
+      servername: this.host,
+    } as Parameters<typeof nodemailer.createTransport>[0]);
     return this.transporter;
   }
 
