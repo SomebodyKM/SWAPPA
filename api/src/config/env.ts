@@ -31,16 +31,25 @@ const envSchema = z.object({
   // Override in production; the dev default is fine for local/staging.
   LOCATION_FUZZ_SALT: z.string().default('dev-location-fuzz-salt'),
 
-  // Email. Priority: SMTP (e.g. SMTP2GO) → Resend → console fallback.
-  // MAIL_FROM is the verified sender, e.g. 'SWAPPA <verify@yourdomain>'.
+  // Email. Priority: SMTP (e.g. SMTP2GO) → Mailjet → Resend → console
+  // fallback. MAIL_FROM is the verified sender, e.g. 'SWAPPA <verify@yourdomain>'.
+  // Note: Render (and many PaaS hosts) block outbound raw SMTP entirely —
+  // Mailjet/Resend go over HTTPS instead, so prefer those when deployed there.
   MAIL_FROM: z.string().optional(),
-  // Generic SMTP (SMTP2GO/Brevo/SendGrid/Mailjet/…).
+  // Generic SMTP (SMTP2GO/Brevo/SendGrid/…) — only reliable on hosts that
+  // allow outbound SMTP.
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().optional(),
   SMTP_SECURE: z.coerce.boolean().optional(), // true for port 465; else STARTTLS
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
-  // Resend (SDK) — alternative to SMTP.
+  // Mailjet (HTTPS Send API v3.1) — API key/secret from
+  // app.mailjet.com/account/apikeys. MAIL_FROM's address must be a verified
+  // sender in app.mailjet.com/account/sender (single-address verification via
+  // an emailed confirmation link — no DNS/domain access needed).
+  MAILJET_API_KEY: z.string().optional(),
+  MAILJET_API_SECRET: z.string().optional(),
+  // Resend (SDK, HTTPS) — alternative to Mailjet.
   RESEND_API_KEY: z.string().optional(),
 
   FCM_PROJECT_ID: z.string().optional(),

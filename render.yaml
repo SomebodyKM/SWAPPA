@@ -46,6 +46,10 @@ services:
         sync: false
       - key: SMTP_PASS
         sync: false
+      - key: MAILJET_API_KEY
+        sync: false
+      - key: MAILJET_API_SECRET
+        sync: false
       - key: RESEND_API_KEY
         sync: false
       - key: FCM_PROJECT_ID

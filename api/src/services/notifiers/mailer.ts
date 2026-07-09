@@ -83,6 +83,57 @@ class SmtpMailer implements Mailer {
   }
 }
 
+/** Splits `"SWAPPA <verify@domain>"` into Mailjet's separate Name/Email fields. */
+function parseFromHeader(from: string): { Email: string; Name?: string } {
+  const match = from.match(/^\s*(.*?)\s*<(.+)>\s*$/);
+  if (match) return { Name: match[1].replace(/^"|"$/g, '') || undefined, Email: match[2] };
+  return { Email: from.trim() };
+}
+
+/**
+ * Mailjet mailer (HTTPS Send API v3.1 — not their SMTP relay, since PaaS
+ * hosts like Render commonly block outbound SMTP entirely regardless of
+ * provider). Configure MAILJET_API_KEY + MAILJET_API_SECRET + MAIL_FROM;
+ * MAIL_FROM's address must be verified as a sender in Mailjet (single-address
+ * email confirmation, no domain/DNS access required).
+ */
+class MailjetMailer implements Mailer {
+  constructor(
+    private apiKey: string,
+    private apiSecret: string,
+    private from: string,
+  ) {}
+
+  async send(input: SendEmailInput): Promise<void> {
+    try {
+      const res = await fetch('https://api.mailjet.com/v3.1/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Basic ${Buffer.from(`${this.apiKey}:${this.apiSecret}`).toString('base64')}`,
+        },
+        body: JSON.stringify({
+          Messages: [
+            {
+              From: parseFromHeader(this.from),
+              To: [{ Email: input.to }],
+              Subject: input.subject,
+              TextPart: input.text,
+              HTMLPart: input.html ?? `<pre>${input.text}</pre>`,
+            },
+          ],
+        }),
+      });
+      const data = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) throw new Error(`Mailjet ${res.status}: ${JSON.stringify(data)}`);
+      logger.info(`[mailer:mailjet] sent to=${input.to}`);
+    } catch (err) {
+      logger.error(`[mailer:mailjet] send failed for ${input.to}; falling back to console`, err);
+      await new ConsoleMailer().send(input);
+    }
+  }
+}
+
 /**
  * Resend mailer (transactional email — ~3k emails/mo free). Configure
  * RESEND_API_KEY + MAIL_FROM to enable. If a send fails (e.g. bad key or, in
@@ -123,12 +174,17 @@ function buildMailer(): Mailer {
     logger.info(`[mailer] using SMTP (${env.SMTP_HOST}:${port}, from ${env.MAIL_FROM})`);
     return new SmtpMailer(env.SMTP_HOST, port, secure, env.SMTP_USER, env.SMTP_PASS, env.MAIL_FROM);
   }
-  // 2. Resend SDK
+  // 2. Mailjet (HTTPS)
+  if (env.MAILJET_API_KEY && env.MAILJET_API_SECRET && env.MAIL_FROM) {
+    logger.info(`[mailer] using Mailjet (from ${env.MAIL_FROM})`);
+    return new MailjetMailer(env.MAILJET_API_KEY, env.MAILJET_API_SECRET, env.MAIL_FROM);
+  }
+  // 3. Resend SDK (HTTPS)
   if (env.RESEND_API_KEY && env.MAIL_FROM) {
     logger.info(`[mailer] using Resend (from ${env.MAIL_FROM})`);
     return new ResendMailer(env.RESEND_API_KEY, env.MAIL_FROM);
   }
-  // 3. Console fallback
+  // 4. Console fallback
   logger.info('[mailer] no email provider configured — using console mailer');
   return new ConsoleMailer();
 }
