@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,6 +16,7 @@ import 'features/notifications/notification_navigation.dart';
 import 'features/notifications/notification_presenter.dart';
 import 'features/notifications/notification_priming_screen.dart';
 import 'features/notifications/push_repository.dart';
+import 'firebase_options.dart';
 
 /// Required by the plugin to run in a background isolate when a push arrives
 /// while the app is killed/backgrounded. Firebase Admin always sends a
@@ -26,7 +28,9 @@ Future<void> _onBackgroundMessage(RemoteMessage message) async {}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(
+    options: kIsWeb ? DefaultFirebaseOptions.web : null,
+  );
   FirebaseMessaging.onBackgroundMessage(_onBackgroundMessage);
   runApp(const ProviderScope(child: SwappaApp()));
 }
