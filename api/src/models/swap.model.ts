@@ -16,6 +16,8 @@ export interface SwapDoc extends Document<Types.ObjectId> {
   conversation: Types.ObjectId;
   noShowReportedAt?: Date | null; // set when a session no-show is reported (US4)
   abandonAllowedAt?: Date | null; // earliest time the swap may be abandoned (US4)
+  cancelReason?: string; // required unless the initiator withdraws a still-pending request
+  finishConfirmedBy: Types.ObjectId[]; // mutual "mark finished" — both required to complete
   createdAt: Date;
   updatedAt: Date;
 }
@@ -38,6 +40,8 @@ const swapSchema = new Schema<SwapDoc>(
     conversation: { type: Schema.Types.ObjectId, ref: 'Conversation', required: true },
     noShowReportedAt: { type: Date, default: null },
     abandonAllowedAt: { type: Date, default: null },
+    cancelReason: { type: String },
+    finishConfirmedBy: { type: [{ type: Schema.Types.ObjectId, ref: 'User' }], default: [] },
   },
   { timestamps: true },
 );

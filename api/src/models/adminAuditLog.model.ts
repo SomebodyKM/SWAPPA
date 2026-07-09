@@ -9,9 +9,11 @@ export type AdminAction =
   | 'user_suspend'
   | 'role_change'
   | 'report_resolve'
-  | 'report_dismiss';
+  | 'report_dismiss'
+  | 'bug_resolve'
+  | 'bug_dismiss';
 
-export type AdminTargetType = 'skill' | 'user' | 'report';
+export type AdminTargetType = 'skill' | 'user' | 'report' | 'bug';
 
 export interface AdminAuditLogDoc extends Document<Types.ObjectId> {
   _id: Types.ObjectId;
@@ -28,7 +30,7 @@ const adminAuditLogSchema = new Schema<AdminAuditLogDoc>(
   {
     admin: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     action: { type: String, required: true },
-    targetType: { type: String, enum: ['skill', 'user', 'report'], required: true },
+    targetType: { type: String, enum: ['skill', 'user', 'report', 'bug'], required: true },
     targetId: { type: Schema.Types.ObjectId, required: true },
     detail: { type: Schema.Types.Mixed, default: {} },
   },

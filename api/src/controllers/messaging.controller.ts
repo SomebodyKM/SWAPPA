@@ -6,6 +6,12 @@ export const messagingController: Record<string, RequestHandler> = {
     res.json({ items: await messagingService.listConversations(req.auth!.userId) });
   },
 
+  createConversation: async (req, res) => {
+    const conv = await messagingService.getOrCreateConversation(req.auth!.userId, req.body.targetUserId);
+    await conv.populate('participants', 'displayName photoUrl ratingAvg');
+    res.status(201).json(conv);
+  },
+
   getConversation: async (req, res) => {
     const conv = await messagingService.getConversation(String(req.params.id), req.auth!.userId);
     res.json(conv);

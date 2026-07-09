@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { Skill, SkillDoc, normalizeSkillName } from '../models/skill.model';
 import { User } from '../models/user.model';
 import { Report, ReportDoc, ReportStatus } from '../models/report.model';
+import { BugReport, BugReportDoc, BugReportStatus } from '../models/bugReport.model';
 import { Swap } from '../models/swap.model';
 import { Session } from '../models/session.model';
 import { CreditTransaction } from '../models/creditTransaction.model';
@@ -169,6 +170,35 @@ export const adminService = {
     await report.save();
     await audit(adminId, 'report_dismiss', 'report', report._id, { note });
     return report;
+  },
+
+  // ---- Bug reports ----
+  async listBugReports(status?: BugReportStatus): Promise<BugReportDoc[]> {
+    const filter: Record<string, unknown> = {};
+    if (status) filter.status = status;
+    return BugReport.find(filter).sort({ createdAt: -1 }).populate('reporter', 'displayName email');
+  },
+
+  async resolveBugReport(adminId: string, bugReportId: string, note: string): Promise<BugReportDoc> {
+    const bugReport = await BugReport.findById(bugReportId);
+    if (!bugReport) throw Errors.notFound('Bug report not found');
+    bugReport.status = 'resolved';
+    bugReport.resolvedBy = new Types.ObjectId(adminId);
+    bugReport.resolutionNote = note;
+    await bugReport.save();
+    await audit(adminId, 'bug_resolve', 'bug', bugReport._id, { note });
+    return bugReport;
+  },
+
+  async dismissBugReport(adminId: string, bugReportId: string, note: string): Promise<BugReportDoc> {
+    const bugReport = await BugReport.findById(bugReportId);
+    if (!bugReport) throw Errors.notFound('Bug report not found');
+    bugReport.status = 'dismissed';
+    bugReport.resolvedBy = new Types.ObjectId(adminId);
+    bugReport.resolutionNote = note;
+    await bugReport.save();
+    await audit(adminId, 'bug_dismiss', 'bug', bugReport._id, { note });
+    return bugReport;
   },
 
   async auditLog(limit = 100): Promise<unknown[]> {

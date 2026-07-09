@@ -1,6 +1,7 @@
 import { RequestHandler } from 'express';
 import { adminService } from '../services/admin.service';
 import { ReportStatus } from '../models/report.model';
+import { BugReportStatus } from '../models/bugReport.model';
 
 export const adminController: Record<string, RequestHandler> = {
   // Skills
@@ -50,6 +51,18 @@ export const adminController: Record<string, RequestHandler> = {
   },
   dismissReport: async (req, res) => {
     res.json(await adminService.dismissReport(req.auth!.userId, String(req.params.id), req.body.note ?? ''));
+  },
+
+  // Bug reports
+  listBugReports: async (req, res) => {
+    const q = (res.locals.query ?? {}) as { status?: BugReportStatus };
+    res.json({ items: await adminService.listBugReports(q.status) });
+  },
+  resolveBugReport: async (req, res) => {
+    res.json(await adminService.resolveBugReport(req.auth!.userId, String(req.params.id), req.body.note ?? ''));
+  },
+  dismissBugReport: async (req, res) => {
+    res.json(await adminService.dismissBugReport(req.auth!.userId, String(req.params.id), req.body.note ?? ''));
   },
 
   // Audit + metrics

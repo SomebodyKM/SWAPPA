@@ -11,9 +11,19 @@ class AppTypography {
   static TextTheme textTheme(Color onColor) {
     final muted = onColor;
     TextStyle display(double size, [FontWeight w = FontWeight.w700]) =>
-        GoogleFonts.fredoka(fontSize: size, fontWeight: w, color: onColor, height: 1.15);
+        GoogleFonts.fredoka(
+          fontSize: size,
+          fontWeight: w,
+          color: onColor,
+          height: 1.15,
+        );
     TextStyle body(double size, [FontWeight w = FontWeight.w400]) =>
-        GoogleFonts.nunitoSans(fontSize: size, fontWeight: w, color: muted, height: 1.4);
+        GoogleFonts.nunitoSans(
+          fontSize: size,
+          fontWeight: w,
+          color: muted,
+          height: 1.4,
+        );
 
     return TextTheme(
       // Display / headings — Fredoka
@@ -38,11 +48,10 @@ class AppTypography {
     double size = 16,
     FontWeight weight = FontWeight.w700,
     Color? color,
-  }) =>
-      GoogleFonts.dmSans(
-        fontSize: size,
-        fontWeight: weight,
-        color: color,
-        fontFeatures: const [FontFeature.tabularFigures()],
-      );
+  }) => GoogleFonts.dmSans(
+    fontSize: size,
+    fontWeight: weight,
+    color: color,
+    fontFeatures: const [FontFeature.tabularFigures()],
+  );
 }

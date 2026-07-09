@@ -30,7 +30,12 @@ export const sessionService = {
     input: { teacherId: string; learnerId: string; scheduledAt: Date; format: SessionFormat },
   ): Promise<SessionDoc> {
     const swap = await loadSwapForParticipant(swapId, userId);
-    if (swap.status !== 'active') throw Errors.conflict('Swap must be active to schedule sessions');
+    // Allowed on a still-pending request too, so the initiator can propose a
+    // first session in the same breath as the swap itself — the recipient
+    // still has to separately accept the swap and respond to the session.
+    if (!['requested', 'active'].includes(swap.status)) {
+      throw Errors.conflict('Swap must be requested or active to schedule sessions');
+    }
 
     const partySet = new Set(swap.participants.map(String));
     if (!partySet.has(input.teacherId) || !partySet.has(input.learnerId)) {
@@ -75,12 +80,20 @@ export const sessionService = {
 
     session.status = decision === 'accept' ? 'accepted' : 'declined';
     await session.save();
+    // Included so a "declined" notification can route straight to the right
+    // Swaps-tab tab (active/pending/history) without a second fetch.
+    const swap = await Swap.findById(session.swap).select('status');
     await notificationService.notify({
       userId: String(session.proposedBy),
       type: 'session_responded',
       title: `Session ${session.status}`,
       body: `Your session proposal was ${session.status}`,
-      data: { sessionId: String(session._id), decision },
+      data: {
+        sessionId: String(session._id),
+        swapId: String(session.swap),
+        decision,
+        swapStatus: swap?.status,
+      },
     });
     return session;
   },
@@ -137,8 +150,10 @@ export const sessionService = {
   },
 
   /**
-   * Confirm a session as completed. When BOTH parties confirm, the session is
-   * completed and the parent swap is marked completed (releasing the slot) — FR-012.
+   * Confirm a session as completed. A swap can span multiple sessions, so
+   * completing one does NOT complete the parent swap — that only happens
+   * through the separate mutual "confirm finished" flow at the swap level
+   * (see `swapService.confirmFinish`).
    */
   async confirmComplete(sessionId: string, userId: string): Promise<SessionDoc> {
     const session = await loadSessionForParticipant(sessionId, userId);
@@ -151,24 +166,32 @@ export const sessionService = {
     const bothConfirmed =
       session.confirmedBy.some((id) => String(id) === String(session.teacher)) &&
       session.confirmedBy.some((id) => String(id) === String(session.learner));
+    const otherId = [String(session.teacher), String(session.learner)].find((id) => id !== userId)!;
 
-    if (bothConfirmed && session.status !== 'completed') {
+    if (bothConfirmed) {
+      const alreadyCompleted = session.status === 'completed';
       session.status = 'completed';
       await session.save();
-      const swap = await swapService.markCompleted(String(session.swap));
-      await Promise.all(
-        swap.participants.map((p) =>
-          notificationService.notify({
-            userId: String(p),
-            type: 'session_completed',
-            title: 'Swap complete',
-            body: 'Your session is complete — leave a review!',
-            data: { sessionId: String(session._id), swapId: String(session.swap) },
-          }),
-        ),
-      );
+      if (!alreadyCompleted) {
+        await notificationService.notify({
+          userId: otherId,
+          type: 'session_completed',
+          title: 'Session complete',
+          body: 'Your session is complete!',
+          data: { sessionId: String(session._id), swapId: String(session.swap) },
+        });
+      }
     } else {
       await session.save();
+      // Lets the other side know their turn is up without them checking
+      // back — mirrors `swapService.confirmFinish`'s first-confirm notice.
+      await notificationService.notify({
+        userId: otherId,
+        type: 'session_finish_requested',
+        title: 'Session marked complete',
+        body: 'The other person marked this session complete — confirm if you agree.',
+        data: { sessionId: String(session._id), swapId: String(session.swap) },
+      });
     }
     return session;
   },

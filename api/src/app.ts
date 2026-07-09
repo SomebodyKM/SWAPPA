@@ -13,6 +13,11 @@ import { env } from './config/env';
 export function createApp(): Application {
   const app = express();
 
+  // Render (and most PaaS hosts) sit behind a reverse proxy — without this,
+  // express-rate-limit reads the proxy's IP instead of the real client's,
+  // and `req.ip`/`req.secure` are wrong.
+  app.set('trust proxy', 1);
+
   app.use(helmet());
   app.use(cors({ origin: env.CORS_ORIGIN }));
   app.use(express.json({ limit: '1mb' }));

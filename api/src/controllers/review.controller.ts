@@ -10,6 +10,11 @@ export const reviewController: Record<string, RequestHandler> = {
     res.status(201).json(review);
   },
 
+  mine: async (req, res) => {
+    const review = await reviewService.findMine(String(req.params.id), req.auth!.userId);
+    res.json({ review });
+  },
+
   listForUser: async (req, res) => {
     const q = (res.locals.query ?? {}) as { cursor?: string; limit?: number };
     res.json(

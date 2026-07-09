@@ -6,7 +6,7 @@
 export type Tier = 'free' | 'premium';
 
 export interface TierLimits {
-  skillTags: number; // max offer+want tags
+  skillTagsPerKind: number; // max tags per kind (3 teach + 3 want on free)
   activeSwaps: number; // max concurrent {requested, active} swaps
   matchResults: number; // max results shown in discovery
   mapRadiusMeters: number; // max local radius
@@ -16,7 +16,7 @@ export interface TierLimits {
 
 export const TIER_LIMITS: Record<Tier, TierLimits> = {
   free: {
-    skillTags: 6,
+    skillTagsPerKind: 3,
     activeSwaps: 2,
     matchResults: 2,
     mapRadiusMeters: 25_000,
@@ -24,7 +24,7 @@ export const TIER_LIMITS: Record<Tier, TierLimits> = {
     basicCreditCap: 20,
   },
   premium: {
-    skillTags: 100,
+    skillTagsPerKind: 50,
     activeSwaps: 50,
     matchResults: 100,
     mapRadiusMeters: 200_000,

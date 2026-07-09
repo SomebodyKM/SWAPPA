@@ -43,3 +43,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Firebase client config — not a high-value secret (it's designed to ship
+# inside the APK), but keep it out of git so it isn't casually re-added;
+# restrict it in Google Cloud Console instead. Each dev/CI machine needs
+# its own copy from the Firebase console.
+/android/app/google-services.json
+/ios/Runner/GoogleService-Info.plist

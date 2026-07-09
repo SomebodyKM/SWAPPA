@@ -3,7 +3,8 @@ import { User, UserDoc } from '../models/user.model';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt';
 import { verificationService } from './verification.service';
 import { creditService } from './credit.service';
-import { Errors } from '../utils/errors';
+import { Errors, AppError } from '../utils/errors';
+import { assertStrongPassword } from '../utils/passwordStrength';
 
 const SALT_ROUNDS = 12;
 
@@ -32,6 +33,9 @@ export const authService = {
    * phone verification is a future update).
    */
   async register(input: RegisterInput): Promise<{ userId: string; email: string }> {
+    // Reject weak passwords (zxcvbn), factoring in the user's own details.
+    assertStrongPassword(input.password, [input.email, input.displayName]);
+
     const passwordHash = await bcrypt.hash(input.password, SALT_ROUNDS);
     let user: UserDoc;
     try {
@@ -44,7 +48,9 @@ export const authService = {
       });
     } catch (err) {
       if ((err as { code?: number }).code === 11000) {
-        throw Errors.conflict('An account with that email or phone already exists', 'ACCOUNT_EXISTS');
+        throw new AppError(409, 'ACCOUNT_EXISTS', 'That email or phone is already registered', {
+          field: 'email',
+        });
       }
       throw err;
     }
@@ -74,12 +80,18 @@ export const authService = {
       ? { email: emailOrPhone.toLowerCase() }
       : { phone: emailOrPhone };
     const user = await User.findOne(query).select('+passwordHash');
-    if (!user) throw Errors.unauthorized('Invalid credentials');
+    if (!user) {
+      throw new AppError(401, 'NO_ACCOUNT', 'No account found with that email or phone', {
+        field: 'emailOrPhone',
+      });
+    }
     if (user.status !== 'active') {
       throw Errors.forbidden('Account is not active', 'ACCOUNT_INACTIVE', { status: user.status });
     }
     const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) throw Errors.unauthorized('Invalid credentials');
+    if (!ok) {
+      throw new AppError(401, 'WRONG_PASSWORD', 'Incorrect password', { field: 'password' });
+    }
     if (!user.emailVerified) {
       throw Errors.forbidden('Email not verified', 'EMAIL_NOT_VERIFIED', { email: user.email });
     }

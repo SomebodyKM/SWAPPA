@@ -44,6 +44,21 @@ export function initSocket(httpServer: HttpServer): SocketServer {
     for (const c of conversations) socket.join(`conv:${String(c._id)}`);
     logger.debug(`socket connected: user=${userId}, conversations=${conversations.length}`);
 
+    // Explicit join for conversations created after this socket connected
+    // (auto-join above only covers conversations that existed at connect time).
+    socket.on('conversation:join', async (payload, ack?: (r: unknown) => void) => {
+      try {
+        const conv = await Conversation.findById(payload.conversationId);
+        if (!conv || !conv.participants.some((p) => String(p) === userId)) {
+          throw new Error('Not a participant of this conversation');
+        }
+        socket.join(`conv:${payload.conversationId}`);
+        ack?.({ ok: true });
+      } catch (err) {
+        ack?.({ ok: false, error: (err as Error).message });
+      }
+    });
+
     // Chat: send / edit / delete (broadcasts happen inside messaging.service).
     socket.on('message:send', async (payload, ack?: (r: unknown) => void) => {
       try {
@@ -77,11 +92,13 @@ export function initSocket(httpServer: HttpServer): SocketServer {
       }
     });
 
-    socket.on('message:read', async (payload) => {
+    socket.on('message:read', async (payload, ack?: (r: unknown) => void) => {
       try {
         await messagingService.markRead(payload.conversationId, userId, payload.lastReadMessageId);
+        ack?.({ ok: true });
       } catch (err) {
         logger.debug('message:read failed', (err as Error).message);
+        ack?.({ ok: false, error: (err as Error).message });
       }
     });
 

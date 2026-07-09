@@ -41,7 +41,7 @@ export const subscriptionService = {
         matchResults: TIER_LIMITS.premium.matchResults,
         mapRadiusMeters: TIER_LIMITS.premium.mapRadiusMeters,
         activeSwaps: TIER_LIMITS.premium.activeSwaps,
-        skillTags: TIER_LIMITS.premium.skillTags,
+        skillTagsPerKind: TIER_LIMITS.premium.skillTagsPerKind,
         multimediaMessaging: TIER_LIMITS.premium.multimediaMessaging,
         basicCreditCap: TIER_LIMITS.premium.basicCreditCap,
       },

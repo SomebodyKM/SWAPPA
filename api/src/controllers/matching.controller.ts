@@ -19,6 +19,11 @@ export const matchingController: Record<string, RequestHandler> = {
       items: result.items,
       premiumUnlocksFullList: result.capped,
       shownLimit: result.limit,
+      // Total match count is safe to reveal even when capped (no candidate
+      // identities), and lets the client show "N more matches" accurately.
+      totalCount: result.totalCount,
+      // Non-identifying previews of the hidden tail (skill + distance only).
+      teasers: result.teasers,
     });
   },
 };

@@ -1,114 +1,294 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_client.dart';
 import '../../../design_system/app_colors.dart';
 import '../../../design_system/app_typography.dart';
 import '../../../design_system/tokens.dart';
 import '../../../design_system/widgets/avatar.dart';
+import '../../../design_system/widgets/avatar_picker.dart';
 import '../../../design_system/widgets/sub_page.dart';
+import '../../auth/auth_controller.dart';
+import '../../safety/safety_repository.dart';
+import '../profile_providers.dart';
 
-// ── Edit Profile ─────────────────────────────────────────────────────────────
-class EditProfilePage extends StatefulWidget {
-  const EditProfilePage({super.key});
-  @override
-  State<EditProfilePage> createState() => _EditProfilePageState();
+const _months = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+String _shortDate(DateTime? d) {
+  if (d == null) return '';
+  return '${d.day} ${_months[d.month - 1]} ${d.year}';
 }
 
-class _EditProfilePageState extends State<EditProfilePage> {
-  final _name = TextEditingController(text: 'Jordan Kim');
-  final _bio = TextEditingController(
-      text: 'Musician & photographer looking to expand horizons. Love learning something genuinely new each week!');
-  final _location = TextEditingController(text: 'London, UK');
+// ── Edit Profile ─────────────────────────────────────────────────────────────
+class EditProfilePage extends ConsumerStatefulWidget {
+  const EditProfilePage({super.key});
+  @override
+  ConsumerState<EditProfilePage> createState() => _EditProfilePageState();
+}
+
+class _EditProfilePageState extends ConsumerState<EditProfilePage> {
+  late final _name = TextEditingController(text: _user?.displayName ?? '');
+  late final _bio = TextEditingController(text: _user?.bio ?? '');
+  bool _busy = false;
+  String? _error;
+
+  dynamic get _user => ref.read(authControllerProvider).user;
+
+  Future<void> _save() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref
+          .read(profileRepositoryProvider)
+          .updateProfile(displayName: _name.text.trim(), bio: _bio.text.trim());
+      await ref.read(authControllerProvider.notifier).refreshUser();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Profile updated')));
+        Navigator.pop(context);
+      }
+    } on ApiException catch (e) {
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return _PageScaffold(
       title: 'Edit Profile',
       children: [
-        Center(
-          child: Column(
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    width: 80,
-                    height: 80,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(Radii.xl),
-                    ),
-                    child: const Text('J',
-                        style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
-                  ),
-                  Positioned(
-                    bottom: -4,
-                    right: -4,
-                    child: Container(
-                      width: 28,
-                      height: 28,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: scheme.surface, width: 2),
-                      ),
-                      child: const Icon(Icons.add_rounded, size: 14, color: Colors.white),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: Insets.sm),
-              Text('Tap to change photo',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
-            ],
+        const Center(child: AvatarPicker(size: 80)),
+        const SizedBox(height: Insets.xl),
+        FieldGroup(
+          label: 'Display name',
+          child: FilledField(controller: _name, hint: 'Your name'),
+        ),
+        const SizedBox(height: Insets.lg),
+        FieldGroup(
+          label: 'Bio',
+          child: FilledField(
+            controller: _bio,
+            maxLines: 4,
+            hint: 'A few words about you…',
           ),
         ),
+        if (_error != null) ...[
+          const SizedBox(height: Insets.md),
+          Text(
+            _error!,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: AppColors.destructive),
+          ),
+        ],
         const SizedBox(height: Insets.xl),
-        FieldGroup(label: 'Display name', child: FilledField(controller: _name, hint: 'Your name')),
-        const SizedBox(height: Insets.lg),
-        FieldGroup(label: 'Bio', child: FilledField(controller: _bio, maxLines: 4, hint: 'A few words about you…')),
-        const SizedBox(height: Insets.lg),
-        FieldGroup(label: 'General location', child: FilledField(controller: _location, hint: 'City, Country')),
-        const SizedBox(height: Insets.xl),
-        const SaveButton(),
+        SaveButton(onPressed: _busy ? null : _save),
       ],
     );
   }
 }
 
 // ── Email & Phone ────────────────────────────────────────────────────────────
-class EmailPhonePage extends StatelessWidget {
+class EmailPhonePage extends ConsumerStatefulWidget {
   const EmailPhonePage({super.key});
+  @override
+  ConsumerState<EmailPhonePage> createState() => _EmailPhonePageState();
+}
+
+class _EmailPhonePageState extends ConsumerState<EmailPhonePage> {
+  dynamic get _user => ref.read(authControllerProvider).user;
+
+  late final _email = TextEditingController(text: _user?.email ?? '');
+  late final _phone = TextEditingController(text: _user?.phone ?? '');
+  final _code = TextEditingController();
+
+  String? _pendingEmail; // set once a code has been sent to a new address
+  bool _emailBusy = false;
+  bool _phoneBusy = false;
+  String? _emailError;
+  String? _phoneError;
+  String? _info;
+
+  Future<void> _updateEmail() async {
+    final next = _email.text.trim();
+    setState(() {
+      _emailBusy = true;
+      _emailError = null;
+      _info = null;
+    });
+    try {
+      await ref.read(profileRepositoryProvider).updateEmail(next);
+      setState(() => _pendingEmail = next);
+    } on ApiException catch (e) {
+      setState(() => _emailError = e.messageForField('email') ?? e.message);
+    } finally {
+      if (mounted) setState(() => _emailBusy = false);
+    }
+  }
+
+  Future<void> _confirmEmailCode() async {
+    setState(() {
+      _emailBusy = true;
+      _emailError = null;
+    });
+    try {
+      await ref
+          .read(authControllerProvider.notifier)
+          .verifyEmail(email: _pendingEmail!, code: _code.text.trim());
+      setState(() {
+        _pendingEmail = null;
+        _code.clear();
+        _info = 'Email updated and verified.';
+      });
+    } on ApiException catch (e) {
+      setState(() => _emailError = e.message);
+    } finally {
+      if (mounted) setState(() => _emailBusy = false);
+    }
+  }
+
+  Future<void> _resendEmailCode() async {
+    setState(() => _emailError = null);
+    try {
+      await ref
+          .read(authControllerProvider.notifier)
+          .resendCode(_pendingEmail!);
+      setState(() => _info = 'A new code has been sent.');
+    } on ApiException catch (e) {
+      setState(() => _emailError = e.message);
+    }
+  }
+
+  Future<void> _updatePhone() async {
+    setState(() {
+      _phoneBusy = true;
+      _phoneError = null;
+    });
+    try {
+      await ref
+          .read(profileRepositoryProvider)
+          .updateProfile(phone: _phone.text.trim());
+      await ref.read(authControllerProvider.notifier).refreshUser();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Phone number updated')));
+      }
+    } on ApiException catch (e) {
+      setState(() => _phoneError = e.messageForField('phone') ?? e.message);
+    } finally {
+      if (mounted) setState(() => _phoneBusy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
+    final verified =
+        ref.watch(authControllerProvider).user?.emailVerified ?? false;
+
     return _PageScaffold(
       title: 'Email & Phone',
       children: [
         FieldGroup(
           label: 'Email address',
           child: FilledField(
-            controller: TextEditingController(text: 'jordan.kim@example.com'),
+            controller: _email,
             keyboardType: TextInputType.emailAddress,
           ),
         ),
         const SizedBox(height: Insets.sm),
         Row(
           children: [
-            Icon(Icons.check_circle_rounded, size: 14, color: AppColors.success),
+            Icon(
+              verified
+                  ? Icons.check_circle_rounded
+                  : Icons.error_outline_rounded,
+              size: 14,
+              color: verified ? AppColors.success : scheme.onSurfaceVariant,
+            ),
             const SizedBox(width: 6),
-            Text('Email verified', style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+            Text(
+              verified ? 'Email verified' : 'Email not verified',
+              style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+            const Spacer(),
+            TextButton(
+              onPressed: _emailBusy || _email.text.trim().isEmpty
+                  ? null
+                  : _updateEmail,
+              child: Text(
+                'Update email',
+                style: text.labelMedium?.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
           ],
         ),
+        if (_pendingEmail != null) ...[
+          const SizedBox(height: Insets.md),
+          FieldGroup(
+            label: 'Verification code',
+            child: FilledField(
+              controller: _code,
+              hint: 'Code sent to $_pendingEmail',
+              keyboardType: TextInputType.number,
+            ),
+          ),
+          const SizedBox(height: Insets.sm),
+          Row(
+            children: [
+              TextButton(
+                onPressed: _emailBusy ? null : _confirmEmailCode,
+                child: const Text('Confirm code'),
+              ),
+              TextButton(
+                onPressed: _emailBusy ? null : _resendEmailCode,
+                child: const Text('Resend'),
+              ),
+            ],
+          ),
+        ],
+        if (_emailError != null) ...[
+          const SizedBox(height: Insets.sm),
+          Text(
+            _emailError!,
+            style: text.bodySmall?.copyWith(color: AppColors.destructive),
+          ),
+        ],
+        if (_info != null) ...[
+          const SizedBox(height: Insets.sm),
+          Text(
+            _info!,
+            style: text.bodySmall?.copyWith(color: AppColors.success),
+          ),
+        ],
         const SizedBox(height: Insets.lg),
         FieldGroup(
           label: 'Phone number',
           child: FilledField(
-            controller: TextEditingController(text: '+44 7700 900123'),
+            controller: _phone,
             keyboardType: TextInputType.phone,
           ),
         ),
@@ -124,31 +304,49 @@ class EmailPhonePage extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 6),
-            Text('Phone not verified', style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+            Text(
+              'Phone not verified',
+              style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
             const Spacer(),
-            Text('Send code',
-                style: text.labelMedium?.copyWith(color: AppColors.primary, fontWeight: FontWeight.w700)),
+            Text(
+              'Verification coming soon',
+              style: text.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
           ],
         ),
+        if (_phoneError != null) ...[
+          const SizedBox(height: Insets.sm),
+          Text(
+            _phoneError!,
+            style: text.bodySmall?.copyWith(color: AppColors.destructive),
+          ),
+        ],
         const SizedBox(height: Insets.xl),
-        const SaveButton(),
+        SaveButton(
+          label: 'Save phone number',
+          onPressed: _phoneBusy ? null : _updatePhone,
+        ),
       ],
     );
   }
 }
 
 // ── Change Password (with strength meter) ────────────────────────────────────
-class ChangePasswordPage extends StatefulWidget {
+class ChangePasswordPage extends ConsumerStatefulWidget {
   const ChangePasswordPage({super.key});
   @override
-  State<ChangePasswordPage> createState() => _ChangePasswordPageState();
+  ConsumerState<ChangePasswordPage> createState() => _ChangePasswordPageState();
 }
 
-class _ChangePasswordPageState extends State<ChangePasswordPage> {
+class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
+  final _current = TextEditingController();
   final _next = TextEditingController();
   final _confirm = TextEditingController();
   String _nextVal = '';
   String _confirmVal = '';
+  bool _busy = false;
+  String? _error;
 
   int _strength(String pw) {
     if (pw.isEmpty) return 0;
@@ -161,6 +359,31 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
     return s;
   }
 
+  Future<void> _save() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref
+          .read(profileRepositoryProvider)
+          .changePassword(
+            currentPassword: _current.text,
+            newPassword: _next.text,
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Password updated')));
+        Navigator.pop(context);
+      }
+    } on ApiException catch (e) {
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = _strength(_nextVal);
@@ -171,12 +394,28 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
       4 => const Color(0xFF22C55E),
       _ => AppColors.success,
     };
-    final mismatch = _confirmVal.isNotEmpty && _nextVal.isNotEmpty && _confirmVal != _nextVal;
+    final mismatch =
+        _confirmVal.isNotEmpty &&
+        _nextVal.isNotEmpty &&
+        _confirmVal != _nextVal;
+    final canSave =
+        !_busy &&
+        _current.text.isNotEmpty &&
+        _nextVal.isNotEmpty &&
+        _confirmVal == _nextVal;
 
     return _PageScaffold(
       title: 'Change Password',
       children: [
-        const FieldGroup(label: 'Current password', child: FilledField(obscure: true, hint: '••••••••')),
+        FieldGroup(
+          label: 'Current password',
+          child: FilledField(
+            controller: _current,
+            obscure: true,
+            hint: '••••••••',
+            onChanged: (_) => setState(() {}),
+          ),
+        ),
         const SizedBox(height: Insets.lg),
         FieldGroup(
           label: 'New password',
@@ -194,7 +433,9 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                 child: LinearProgressIndicator(
                   value: s / 5,
                   minHeight: 6,
-                  backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest,
                   valueColor: AlwaysStoppedAnimation(color),
                 ),
               ),
@@ -216,14 +457,27 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
               if (mismatch)
                 Padding(
                   padding: const EdgeInsets.only(top: 6, left: 4),
-                  child: Text("Passwords don't match",
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.destructive)),
+                  child: Text(
+                    "Passwords don't match",
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.destructive,
+                    ),
+                  ),
                 ),
             ],
           ),
         ),
+        if (_error != null) ...[
+          const SizedBox(height: Insets.md),
+          Text(
+            _error!,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: AppColors.destructive),
+          ),
+        ],
         const SizedBox(height: Insets.xl),
-        const SaveButton(label: 'Update password'),
+        SaveButton(label: 'Update password', onPressed: canSave ? _save : null),
       ],
     );
   }
@@ -262,23 +516,35 @@ class PlanUpgradePage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('CURRENT PLAN',
-                        style: text.labelSmall?.copyWith(
-                            color: scheme.onSurfaceVariant, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                    Text(
+                      'CURRENT PLAN',
+                      style: text.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
                     Text('Free', style: text.titleMedium),
                   ],
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 7,
+                ),
                 decoration: BoxDecoration(
                   color: scheme.surface,
                   borderRadius: BorderRadius.circular(Radii.sm),
                   border: Border.all(color: scheme.outlineVariant),
                 ),
-                child: Text('Active',
-                    style: text.labelMedium?.copyWith(
-                        color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700)),
+                child: Text(
+                  'Active',
+                  style: text.labelMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ],
           ),
@@ -297,13 +563,23 @@ class PlanUpgradePage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('PREMIUM',
-                  style: text.labelSmall?.copyWith(
-                      color: Colors.white70, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+              Text(
+                'PREMIUM',
+                style: text.labelSmall?.copyWith(
+                  color: Colors.white70,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.5,
+                ),
+              ),
               const SizedBox(height: 4),
-              Text('£7.99', style: AppTypography.tabular(size: 30, color: Colors.white)),
-              Text('per month · cancel anytime',
-                  style: text.bodySmall?.copyWith(color: Colors.white70)),
+              Text(
+                '£7.99',
+                style: AppTypography.tabular(size: 30, color: Colors.white),
+              ),
+              Text(
+                'per month · cancel anytime',
+                style: text.bodySmall?.copyWith(color: Colors.white70),
+              ),
               const SizedBox(height: Insets.lg),
               for (final f in _features)
                 Padding(
@@ -313,7 +589,10 @@ class PlanUpgradePage extends StatelessWidget {
                       Icon(f.$1, size: 15, color: Colors.white70),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Text(f.$2, style: text.bodyMedium?.copyWith(color: Colors.white)),
+                        child: Text(
+                          f.$2,
+                          style: text.bodyMedium?.copyWith(color: Colors.white),
+                        ),
                       ),
                     ],
                   ),
@@ -335,8 +614,10 @@ class PlanUpgradePage extends StatelessWidget {
         ),
         const SizedBox(height: Insets.md),
         Center(
-          child: Text('Restore purchase',
-              style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+          child: Text(
+            'Restore purchase',
+            style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+          ),
         ),
       ],
     );
@@ -344,146 +625,300 @@ class PlanUpgradePage extends StatelessWidget {
 }
 
 // ── Blocked Users ────────────────────────────────────────────────────────────
-class BlockedUsersPage extends StatefulWidget {
+class BlockedUsersPage extends ConsumerWidget {
   const BlockedUsersPage({super.key});
-  @override
-  State<BlockedUsersPage> createState() => _BlockedUsersPageState();
-}
-
-class _BlockedUsersPageState extends State<BlockedUsersPage> {
-  final _list = <(String, String)>[('Tom X.', 'Blocked 12 Jun'), ('Alex R.', 'Blocked 3 May')];
 
   @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final blockedAsync = ref.watch(blockedUsersProvider);
     return _PageScaffold(
       title: 'Blocked Users',
       children: [
-        if (_list.isEmpty)
-          _empty(context, Icons.shield_rounded, 'No blocked users')
-        else
-          Container(
-            decoration: BoxDecoration(
-              color: scheme.surface,
-              borderRadius: BorderRadius.circular(Radii.md),
-              border: Border.all(color: scheme.outlineVariant),
+        blockedAsync.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.only(top: 60),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+          error: (e, _) => Padding(
+            padding: const EdgeInsets.only(top: 60),
+            child: Center(
+              child: Text(
+                'Couldn’t load blocked users',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
             ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              children: [
-                for (var i = 0; i < _list.length; i++) ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: Insets.lg, vertical: 12),
-                    child: Row(
-                      children: [
-                        Avatar(
-                            initials: _list[i].$1.split(' ').map((w) => w[0]).take(2).join(),
-                            color: avatarColorFor(_list[i].$1),
-                            size: 36),
-                        const SizedBox(width: Insets.md),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(_list[i].$1,
-                                  style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                              Text(_list[i].$2,
-                                  style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
-                            ],
-                          ),
-                        ),
-                        OutlinedButton(
-                          onPressed: () => setState(() => _list.removeAt(i)),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(0, 32),
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            side: BorderSide(color: scheme.outlineVariant),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.sm)),
-                          ),
-                          child: Text('Unblock',
-                              style: text.labelMedium?.copyWith(color: scheme.onSurfaceVariant)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (i < _list.length - 1)
-                    Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.5)),
+          ),
+          data: (blocked) {
+            if (blocked.isEmpty) {
+              return _empty(context, Icons.shield_rounded, 'No blocked users');
+            }
+            final scheme = Theme.of(context).colorScheme;
+            return Container(
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                borderRadius: BorderRadius.circular(Radii.md),
+                border: Border.all(color: scheme.outlineVariant),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                children: [
+                  for (var i = 0; i < blocked.length; i++) ...[
+                    _BlockedUserRow(user: blocked[i]),
+                    if (i < blocked.length - 1)
+                      Divider(
+                        height: 1,
+                        color: scheme.outlineVariant.withValues(alpha: 0.5),
+                      ),
+                  ],
                 ],
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _BlockedUserRow extends ConsumerWidget {
+  const _BlockedUserRow({required this.user});
+  final BlockedUser user;
+
+  Future<void> _confirmUnblock(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(
+          horizontal: Insets.xl,
+          vertical: Insets.xl,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Radii.lg),
+        ),
+        title: Text('Unblock ${user.name}?'),
+        content: const Text(
+          'You’ll be able to see each other in Discovery and message each other again.',
+        ),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('Cancel'),
+                ),
+              ),
+              const SizedBox(width: Insets.sm),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: const Text('Unblock'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      await ref.read(safetyRepositoryProvider).unblock(user.targetUserId);
+      ref.invalidate(blockedUsersProvider);
+    } on ApiException catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: Insets.lg, vertical: 12),
+      child: Row(
+        children: [
+          Avatar(
+            initials: user.name.split(' ').map((w) => w[0]).take(2).join(),
+            color: avatarColorFor(user.name),
+            photoUrl: user.photoUrl,
+            size: 36,
+          ),
+          const SizedBox(width: Insets.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  user.name,
+                  style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                Text(
+                  'Blocked ${_shortDate(user.blockedAt)}',
+                  style: text.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
               ],
             ),
           ),
-      ],
+          OutlinedButton(
+            onPressed: () => _confirmUnblock(context, ref),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(0, 32),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              side: BorderSide(color: scheme.outlineVariant),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(Radii.sm),
+              ),
+            ),
+            child: Text(
+              'Unblock',
+              style: text.labelMedium?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
 // ── Report History ───────────────────────────────────────────────────────────
-class ReportHistoryPage extends StatelessWidget {
+class ReportHistoryPage extends ConsumerWidget {
   const ReportHistoryPage({super.key});
 
-  static const _reports = <(String, String, String, String)>[
-    ('Tom X.', 'Inappropriate messages', '12 Jun 2026', 'resolved'),
-    ('Unknown User', 'Fake skill listing', '3 May 2026', 'under review'),
-  ];
-
   @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final reportsAsync = ref.watch(myReportsProvider);
     return _PageScaffold(
       title: 'Report History',
       children: [
-        for (final r in _reports) ...[
-          Container(
-            padding: const EdgeInsets.all(Insets.lg),
-            decoration: BoxDecoration(
-              color: scheme.surface,
-              borderRadius: BorderRadius.circular(Radii.md),
-              border: Border.all(color: scheme.outlineVariant),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Avatar(
-                        initials: r.$1.split(' ').map((w) => w[0]).take(2).join(),
-                        color: avatarColorFor(r.$1),
-                        size: 36),
-                    const SizedBox(width: Insets.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(r.$1, style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                          Text(r.$3, style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
-                        ],
-                      ),
-                    ),
-                    _reportStatus(context, r.$4),
-                  ],
-                ),
-                const SizedBox(height: Insets.sm),
-                Text(r.$2, style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
-              ],
+        reportsAsync.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.only(top: 60),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+          error: (e, _) => Padding(
+            padding: const EdgeInsets.only(top: 60),
+            child: Center(
+              child: Text(
+                'Couldn’t load report history',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
             ),
           ),
-          const SizedBox(height: Insets.md),
-        ],
+          data: (reports) {
+            if (reports.isEmpty) {
+              return _empty(context, Icons.flag_outlined, 'No reports filed');
+            }
+            final scheme = Theme.of(context).colorScheme;
+            final text = Theme.of(context).textTheme;
+            return Column(
+              children: [
+                for (final r in reports) ...[
+                  Container(
+                    padding: const EdgeInsets.all(Insets.lg),
+                    decoration: BoxDecoration(
+                      color: scheme.surface,
+                      borderRadius: BorderRadius.circular(Radii.md),
+                      border: Border.all(color: scheme.outlineVariant),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Avatar(
+                              initials: r.targetName
+                                  .split(' ')
+                                  .map((w) => w[0])
+                                  .take(2)
+                                  .join(),
+                              color: avatarColorFor(r.targetName),
+                              photoUrl: r.targetPhotoUrl,
+                              size: 36,
+                            ),
+                            const SizedBox(width: Insets.md),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    r.targetName,
+                                    style: text.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  Text(
+                                    _shortDate(r.createdAt),
+                                    style: text.bodySmall?.copyWith(
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            _reportStatus(context, r.status),
+                          ],
+                        ),
+                        if (r.reason != null && r.reason!.isNotEmpty) ...[
+                          const SizedBox(height: Insets.sm),
+                          Text(
+                            r.reason!,
+                            style: text.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                        if (r.resolutionNote != null &&
+                            r.resolutionNote!.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'Note: ${r.resolutionNote}',
+                            style: text.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: Insets.md),
+                ],
+              ],
+            );
+          },
+        ),
       ],
     );
   }
 
   Widget _reportStatus(BuildContext context, String status) {
-    final resolved = status == 'resolved';
+    final (label, resolved) = switch (status) {
+      'resolved' => ('Resolved', true),
+      'dismissed' => ('Dismissed', true),
+      'reviewing' => ('Reviewing', false),
+      _ => ('Open', false),
+    };
     final bg = resolved ? AppColors.offerBg : const Color(0xFFFEF3C7);
     final fg = resolved ? AppColors.offerFg : const Color(0xFF92400E);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(Radii.pill)),
-      child: Text(status,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: fg, fontWeight: FontWeight.w700)),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(Radii.pill),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: fg,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 }
@@ -522,9 +957,18 @@ Widget _empty(BuildContext context, IconData icon, String label) {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 32, color: scheme.onSurfaceVariant.withValues(alpha: 0.4)),
+          Icon(
+            icon,
+            size: 32,
+            color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
+          ),
           const SizedBox(height: Insets.sm),
-          Text(label, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+          ),
         ],
       ),
     ),

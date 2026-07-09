@@ -1,12 +1,8 @@
 /** GeoJSON helpers. MongoDB stores coordinates as [longitude, latitude]. */
 
-export interface GeoPoint {
-  type: 'Point';
-  coordinates: [number, number]; // [lng, lat]
-}
-
-export function makePoint(lng: number, lat: number): GeoPoint {
-  return { type: 'Point', coordinates: [lng, lat] };
+/** Caps stored profile-location precision to ~1.1km. Always apply server-side — never trust client rounding. */
+export function roundCoord(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 export function isValidLngLat(lng: number, lat: number): boolean {

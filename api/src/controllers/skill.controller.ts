@@ -18,7 +18,7 @@ export const skillController: Record<string, RequestHandler> = {
   },
 
   create: async (req, res) => {
-    const skill = await skillService.findOrCreate(req.body.name, req.body.category);
+    const skill = await skillService.proposeSkill(req.body.name, req.body.category);
     res.status(201).json(skill);
   },
 

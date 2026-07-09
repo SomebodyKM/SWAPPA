@@ -7,23 +7,25 @@ import { authLimiter } from '../middleware/rateLimit.middleware';
 const router = Router();
 
 const registerBody = z.object({
-  email: z.email(),
+  email: z.email({ message: 'Enter a valid email address' }),
   phone: z.string().min(5).max(20).optional(),
-  password: z.string().min(8).max(128),
-  displayName: z.string().min(1).max(80),
+  password: z.string({ message: 'Enter a password' }).min(8, {
+    message: 'Password must be at least 8 characters',
+  }).max(128),
+  displayName: z.string({ message: 'Enter your name' }).min(1, { message: 'Enter your name' }).max(80),
   deviceFingerprint: z.string().max(200).optional(),
 });
 
 const verifyBody = z.object({
-  email: z.email(),
-  code: z.string().min(4).max(10),
+  email: z.email({ message: 'Enter a valid email address' }),
+  code: z.string().min(4, { message: 'Enter the 6-digit code' }).max(10),
 });
 
-const resendBody = z.object({ email: z.email() });
+const resendBody = z.object({ email: z.email({ message: 'Enter a valid email address' }) });
 
 const loginBody = z.object({
-  emailOrPhone: z.string().min(3),
-  password: z.string().min(1),
+  emailOrPhone: z.string().min(3, { message: 'Enter your email or phone' }),
+  password: z.string().min(1, { message: 'Enter your password' }),
 });
 
 const refreshBody = z.object({ refreshToken: z.string().min(10) });

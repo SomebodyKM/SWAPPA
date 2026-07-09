@@ -20,4 +20,8 @@ export const safetyController: Record<string, RequestHandler> = {
   listBlocks: async (req, res) => {
     res.json({ items: await safetyService.listBlocks(req.auth!.userId) });
   },
+
+  listMyReports: async (req, res) => {
+    res.json({ items: await safetyService.listMyReports(req.auth!.userId) });
+  },
 };
