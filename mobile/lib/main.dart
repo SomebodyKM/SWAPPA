@@ -118,14 +118,24 @@ class _AuthGate extends ConsumerWidget {
         if (user != null && !user.onboardingComplete) {
           return const ProfileSetupScreen();
         }
-        final primingNeeded = ref
+        // Fail open on error — a broken permission check (e.g. FCM/web
+        // notification support issues) must never brick the whole app by
+        // getting stuck on `_Splash()` forever. `.asData` alone can't tell
+        // "still loading" apart from "errored" (both read as null), which is
+        // exactly what caused that: any error here left users stuck at the
+        // splash screen indefinitely after verifying.
+        return ref
             .watch(notificationPrimingNeededProvider)
-            .asData
-            ?.value;
-        if (primingNeeded == null) return const _Splash();
-        return primingNeeded
-            ? const NotificationPrimingScreen()
-            : const _AppShellWithPush();
+            .when(
+              data: (needed) => needed
+                  ? const NotificationPrimingScreen()
+                  : const _AppShellWithPush(),
+              loading: () => const _Splash(),
+              error: (error, stack) {
+                debugPrint('notificationPrimingNeededProvider failed: $error');
+                return const _AppShellWithPush();
+              },
+            );
     }
   }
 }
