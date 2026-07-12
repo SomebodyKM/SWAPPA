@@ -31,10 +31,10 @@ const envSchema = z.object({
   // Override in production; the dev default is fine for local/staging.
   LOCATION_FUZZ_SALT: z.string().default('dev-location-fuzz-salt'),
 
-  // Email. Priority: SMTP (e.g. SMTP2GO) → Mailjet → Resend → console
+  // Email. Priority: Resend → Mailjet → SMTP (e.g. SMTP2GO) → console
   // fallback. MAIL_FROM is the verified sender, e.g. 'SWAPPA <verify@yourdomain>'.
   // Note: Render (and many PaaS hosts) block outbound raw SMTP entirely —
-  // Mailjet/Resend go over HTTPS instead, so prefer those when deployed there.
+  // Resend/Mailjet go over HTTPS instead, so prefer those when deployed there.
   MAIL_FROM: z.string().optional(),
   // Generic SMTP (SMTP2GO/Brevo/SendGrid/…) — only reliable on hosts that
   // allow outbound SMTP.

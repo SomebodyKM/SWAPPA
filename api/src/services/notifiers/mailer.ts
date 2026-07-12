@@ -167,22 +167,24 @@ class ResendMailer implements Mailer {
 }
 
 function buildMailer(): Mailer {
-  // 1. Generic SMTP (SMTP2GO etc.)
+  // 1. Resend SDK (HTTPS) — primary. Verified domain sender, reliable on
+  // Render (unlike raw SMTP, which Render blocks outbound entirely).
+  if (env.RESEND_API_KEY && env.MAIL_FROM) {
+    logger.info(`[mailer] using Resend (from ${env.MAIL_FROM})`);
+    return new ResendMailer(env.RESEND_API_KEY, env.MAIL_FROM);
+  }
+  // 2. Mailjet (HTTPS) — fallback if Resend isn't configured.
+  if (env.MAILJET_API_KEY && env.MAILJET_API_SECRET && env.MAIL_FROM) {
+    logger.info(`[mailer] using Mailjet (from ${env.MAIL_FROM})`);
+    return new MailjetMailer(env.MAILJET_API_KEY, env.MAILJET_API_SECRET, env.MAIL_FROM);
+  }
+  // 3. Generic SMTP (SMTP2GO etc.) — local dev only; Render blocks outbound
+  // SMTP entirely, so this never works when deployed there.
   if (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS && env.MAIL_FROM) {
     const port = env.SMTP_PORT ?? 587;
     const secure = env.SMTP_SECURE ?? port === 465;
     logger.info(`[mailer] using SMTP (${env.SMTP_HOST}:${port}, from ${env.MAIL_FROM})`);
     return new SmtpMailer(env.SMTP_HOST, port, secure, env.SMTP_USER, env.SMTP_PASS, env.MAIL_FROM);
-  }
-  // 2. Mailjet (HTTPS)
-  if (env.MAILJET_API_KEY && env.MAILJET_API_SECRET && env.MAIL_FROM) {
-    logger.info(`[mailer] using Mailjet (from ${env.MAIL_FROM})`);
-    return new MailjetMailer(env.MAILJET_API_KEY, env.MAILJET_API_SECRET, env.MAIL_FROM);
-  }
-  // 3. Resend SDK (HTTPS)
-  if (env.RESEND_API_KEY && env.MAIL_FROM) {
-    logger.info(`[mailer] using Resend (from ${env.MAIL_FROM})`);
-    return new ResendMailer(env.RESEND_API_KEY, env.MAIL_FROM);
   }
   // 4. Console fallback
   logger.info('[mailer] no email provider configured — using console mailer');

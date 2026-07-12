@@ -208,7 +208,9 @@ export const adminService = {
   // ---- Metrics ----
   async metrics(): Promise<Record<string, number>> {
     const [users, activeSwaps, completedSwaps, premium, aiSpends, boostPurchases] = await Promise.all([
-      User.countDocuments({}),
+      // Unverified stubs (registered, never confirmed the email) don't
+      // count as created accounts.
+      User.countDocuments({ emailVerified: true }),
       Swap.countDocuments({ status: { $in: ['requested', 'active'] } }),
       Swap.countDocuments({ status: 'completed' }),
       User.countDocuments({ tier: 'premium' }),
