@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_cropper/image_cropper.dart';
@@ -64,7 +62,8 @@ class _AvatarPickerState extends ConsumerState<AvatarPicker> {
     setState(() => _busy = true);
     try {
       final repo = ref.read(profileRepositoryProvider);
-      final url = await repo.uploadAvatar(File(cropped.path));
+      final bytes = await cropped.readAsBytes();
+      final url = await repo.uploadAvatar(bytes);
       await repo.updateProfile(photoUrl: url);
       await ref.read(authControllerProvider.notifier).refreshUser();
     } on ApiException catch (e) {

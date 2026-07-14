@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,6 +16,7 @@ import 'features/notifications/notification_navigation.dart';
 import 'features/notifications/notification_presenter.dart';
 import 'features/notifications/notification_priming_screen.dart';
 import 'features/notifications/push_repository.dart';
+import 'firebase_options.dart';
 
 /// Required by the plugin to run in a background isolate when a push arrives
 /// while the app is killed/backgrounded. Firebase Admin always sends a
@@ -26,7 +28,9 @@ Future<void> _onBackgroundMessage(RemoteMessage message) async {}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(
+    options: kIsWeb ? DefaultFirebaseOptions.web : null,
+  );
   FirebaseMessaging.onBackgroundMessage(_onBackgroundMessage);
   runApp(const ProviderScope(child: SwappaApp()));
 }
@@ -43,7 +47,42 @@ class SwappaApp extends ConsumerWidget {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: mode,
+      // Web only — every mobile/native build passes `child` straight through
+      // untouched. On web, `ConstrainedBox`'s maxWidth only ever caps the
+      // width; a browser window narrower than that (e.g. a phone browser)
+      // still gets the full available width, so this never shrinks anything
+      // below what mobile already does.
+      builder: (context, child) {
+        if (!kIsWeb || child == null) return child ?? const SizedBox.shrink();
+        return _WebMaxWidthFrame(child: child);
+      },
       home: const _AuthGate(),
+    );
+  }
+}
+
+/// Centers the app in a phone-width column on web instead of letting it
+/// stretch across a wide browser window — everything (dialogs, bottom
+/// sheets, snackbars included, since they all render inside the Navigator's
+/// own Overlay which sits below this in the tree) stays within the frame.
+class _WebMaxWidthFrame extends StatelessWidget {
+  const _WebMaxWidthFrame({required this.child});
+  final Widget child;
+
+  static const _maxWidth = 480.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      // Same background as every screen's own Scaffold — no visual "frame"
+      // separating the outer area from the constrained content.
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _maxWidth),
+          child: child,
+        ),
+      ),
     );
   }
 }
@@ -79,14 +118,24 @@ class _AuthGate extends ConsumerWidget {
         if (user != null && !user.onboardingComplete) {
           return const ProfileSetupScreen();
         }
-        final primingNeeded = ref
+        // Fail open on error — a broken permission check (e.g. FCM/web
+        // notification support issues) must never brick the whole app by
+        // getting stuck on `_Splash()` forever. `.asData` alone can't tell
+        // "still loading" apart from "errored" (both read as null), which is
+        // exactly what caused that: any error here left users stuck at the
+        // splash screen indefinitely after verifying.
+        return ref
             .watch(notificationPrimingNeededProvider)
-            .asData
-            ?.value;
-        if (primingNeeded == null) return const _Splash();
-        return primingNeeded
-            ? const NotificationPrimingScreen()
-            : const _AppShellWithPush();
+            .when(
+              data: (needed) => needed
+                  ? const NotificationPrimingScreen()
+                  : const _AppShellWithPush(),
+              loading: () => const _Splash(),
+              error: (error, stack) {
+                debugPrint('notificationPrimingNeededProvider failed: $error');
+                return const _AppShellWithPush();
+              },
+            );
     }
   }
 }

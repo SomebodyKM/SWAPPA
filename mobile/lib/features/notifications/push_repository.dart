@@ -1,9 +1,11 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
 import '../../core/notification_permission_store.dart';
 import '../../core/providers.dart';
+import '../../firebase_options.dart';
 
 /// Wraps FCM permission + token registration against the backend's existing
 /// `POST /users/me/push-tokens`. Foreground notifications never reach here —
@@ -24,7 +26,10 @@ class PushRepository {
   /// permission is granted (right after the priming screen, and again on
   /// every app start so a rotated token doesn't go stale server-side).
   Future<void> registerToken() async {
-    final token = await FirebaseMessaging.instance.getToken();
+    // Web needs the VAPID key explicitly; mobile ignores this param entirely.
+    final token = await FirebaseMessaging.instance.getToken(
+      vapidKey: kIsWeb ? DefaultFirebaseOptions.webVapidKey : null,
+    );
     if (token != null) await _send(token);
     FirebaseMessaging.instance.onTokenRefresh.listen(_send);
   }

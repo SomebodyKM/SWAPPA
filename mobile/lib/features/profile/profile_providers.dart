@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -140,14 +140,19 @@ class ProfileRepository {
     body: {'currentPassword': currentPassword, 'newPassword': newPassword},
   );
 
-  /// Uploads [file] straight to Cloudinary using a short-lived signature from
-  /// the API (`POST /media/sign`), then returns the resulting secure URL.
-  /// The API never sees the image bytes; it only signs the upload.
-  Future<String> uploadAvatar(File file) async {
+  /// Uploads [bytes] straight to Cloudinary using a short-lived signature
+  /// from the API (`POST /media/sign`), then returns the resulting secure
+  /// URL. The API never sees the image bytes; it only signs the upload.
+  /// Takes raw bytes rather than a `dart:io File` so the same call works on
+  /// web (where there's no filesystem path to read from).
+  Future<String> uploadAvatar(
+    Uint8List bytes, {
+    String filename = 'avatar.jpg',
+  }) async {
     final signed =
         await _api.postJson('/media/sign', body: {'purpose': 'avatar'}) as Map;
     final form = FormData.fromMap({
-      'file': await MultipartFile.fromFile(file.path),
+      'file': MultipartFile.fromBytes(bytes, filename: filename),
       'api_key': signed['apiKey'].toString(),
       'timestamp': signed['timestamp'].toString(),
       'signature': signed['signature'].toString(),

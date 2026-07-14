@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import { User, UserDoc } from '../models/user.model';
+import { Verification } from '../models/verification.model';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt';
 import { verificationService } from './verification.service';
 import { creditService } from './credit.service';
@@ -35,6 +36,17 @@ export const authService = {
   async register(input: RegisterInput): Promise<{ userId: string; email: string }> {
     // Reject weak passwords (zxcvbn), factoring in the user's own details.
     assertStrongPassword(input.password, [input.email, input.displayName]);
+
+    // An email that registered but never verified doesn't count as an
+    // account — clear the stale, unusable stub (it can't log in and never
+    // did anything else, so nothing else references it) so the same
+    // address can register again instead of permanently hitting 409
+    // ACCOUNT_EXISTS. A verified account with this email still blocks below.
+    const stale = await User.findOne({ email: input.email.toLowerCase(), emailVerified: false });
+    if (stale) {
+      await Verification.deleteOne({ user: stale._id, channel: 'email' });
+      await User.deleteOne({ _id: stale._id });
+    }
 
     const passwordHash = await bcrypt.hash(input.password, SALT_ROUNDS);
     let user: UserDoc;

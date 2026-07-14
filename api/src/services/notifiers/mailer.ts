@@ -1,3 +1,4 @@
+import dns from 'node:dns';
 import { env } from '../../config/env';
 import { logger } from '../../utils/logger';
 
@@ -44,12 +45,23 @@ class SmtpMailer implements Mailer {
   private async getTransporter() {
     if (this.transporter) return this.transporter;
     const nodemailer = await import('nodemailer');
+
+    // nodemailer ^9 resolves both A and AAAA records for the SMTP host and
+    // picks *randomly* between them (its own dual-stack fallback logic —
+    // there's no `family` option that restricts this). Render's containers
+    // have no outbound IPv6 route, so whenever it happens to pick an IPv6
+    // address for smtp.gmail.com the connection fails with ENETUNREACH.
+    // Resolving to a literal IPv4 address ourselves sidesteps that resolver
+    // entirely (a literal IP short-circuits it); `servername` keeps TLS
+    // certificate/SNI validation against the real hostname.
+    const { address } = await dns.promises.lookup(this.host, { family: 4 });
     this.transporter = nodemailer.createTransport({
-      host: this.host,
+      host: address,
       port: this.port,
       secure: this.secure,
       auth: { user: this.user, pass: this.pass },
-    });
+      servername: this.host,
+    } as Parameters<typeof nodemailer.createTransport>[0]);
     return this.transporter;
   }
 
@@ -66,6 +78,57 @@ class SmtpMailer implements Mailer {
       logger.info(`[mailer:smtp] sent to=${input.to} via ${this.host}`);
     } catch (err) {
       logger.error(`[mailer:smtp] send failed for ${input.to}; falling back to console`, err);
+      await new ConsoleMailer().send(input);
+    }
+  }
+}
+
+/** Splits `"SWAPPA <verify@domain>"` into Mailjet's separate Name/Email fields. */
+function parseFromHeader(from: string): { Email: string; Name?: string } {
+  const match = from.match(/^\s*(.*?)\s*<(.+)>\s*$/);
+  if (match) return { Name: match[1].replace(/^"|"$/g, '') || undefined, Email: match[2] };
+  return { Email: from.trim() };
+}
+
+/**
+ * Mailjet mailer (HTTPS Send API v3.1 — not their SMTP relay, since PaaS
+ * hosts like Render commonly block outbound SMTP entirely regardless of
+ * provider). Configure MAILJET_API_KEY + MAILJET_API_SECRET + MAIL_FROM;
+ * MAIL_FROM's address must be verified as a sender in Mailjet (single-address
+ * email confirmation, no domain/DNS access required).
+ */
+class MailjetMailer implements Mailer {
+  constructor(
+    private apiKey: string,
+    private apiSecret: string,
+    private from: string,
+  ) {}
+
+  async send(input: SendEmailInput): Promise<void> {
+    try {
+      const res = await fetch('https://api.mailjet.com/v3.1/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Basic ${Buffer.from(`${this.apiKey}:${this.apiSecret}`).toString('base64')}`,
+        },
+        body: JSON.stringify({
+          Messages: [
+            {
+              From: parseFromHeader(this.from),
+              To: [{ Email: input.to }],
+              Subject: input.subject,
+              TextPart: input.text,
+              HTMLPart: input.html ?? `<pre>${input.text}</pre>`,
+            },
+          ],
+        }),
+      });
+      const data = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) throw new Error(`Mailjet ${res.status}: ${JSON.stringify(data)}`);
+      logger.info(`[mailer:mailjet] sent to=${input.to}`);
+    } catch (err) {
+      logger.error(`[mailer:mailjet] send failed for ${input.to}; falling back to console`, err);
       await new ConsoleMailer().send(input);
     }
   }
@@ -104,19 +167,26 @@ class ResendMailer implements Mailer {
 }
 
 function buildMailer(): Mailer {
-  // 1. Generic SMTP (SMTP2GO etc.)
+  // 1. Resend SDK (HTTPS) — primary. Verified domain sender, reliable on
+  // Render (unlike raw SMTP, which Render blocks outbound entirely).
+  if (env.RESEND_API_KEY && env.MAIL_FROM) {
+    logger.info(`[mailer] using Resend (from ${env.MAIL_FROM})`);
+    return new ResendMailer(env.RESEND_API_KEY, env.MAIL_FROM);
+  }
+  // 2. Mailjet (HTTPS) — fallback if Resend isn't configured.
+  if (env.MAILJET_API_KEY && env.MAILJET_API_SECRET && env.MAIL_FROM) {
+    logger.info(`[mailer] using Mailjet (from ${env.MAIL_FROM})`);
+    return new MailjetMailer(env.MAILJET_API_KEY, env.MAILJET_API_SECRET, env.MAIL_FROM);
+  }
+  // 3. Generic SMTP (SMTP2GO etc.) — local dev only; Render blocks outbound
+  // SMTP entirely, so this never works when deployed there.
   if (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS && env.MAIL_FROM) {
     const port = env.SMTP_PORT ?? 587;
     const secure = env.SMTP_SECURE ?? port === 465;
     logger.info(`[mailer] using SMTP (${env.SMTP_HOST}:${port}, from ${env.MAIL_FROM})`);
     return new SmtpMailer(env.SMTP_HOST, port, secure, env.SMTP_USER, env.SMTP_PASS, env.MAIL_FROM);
   }
-  // 2. Resend SDK
-  if (env.RESEND_API_KEY && env.MAIL_FROM) {
-    logger.info(`[mailer] using Resend (from ${env.MAIL_FROM})`);
-    return new ResendMailer(env.RESEND_API_KEY, env.MAIL_FROM);
-  }
-  // 3. Console fallback
+  // 4. Console fallback
   logger.info('[mailer] no email provider configured — using console mailer');
   return new ConsoleMailer();
 }
